@@ -577,6 +577,36 @@ tamalib/tamalib.c \
 Core/Src/porting/tama/state_tama.c \
 Core/Src/porting/tama/main_tama.c
 
+######################################
+# GBA (gpSP)
+######################################
+CORE_GBA = external/gpsp
+
+GBA_C_SOURCES = \
+$(CORE_GBA)/gba_memory.c \
+$(CORE_GBA)/sound.c \
+$(CORE_GBA)/main.c \
+$(CORE_GBA)/savestate.c \
+$(CORE_GBA)/input.c \
+$(CORE_GBA)/cheats.c \
+$(CORE_GBA)/serial.c \
+$(CORE_GBA)/serial_proto.c \
+$(CORE_GBA)/gbp.c \
+$(CORE_GBA)/rfu.c \
+Core/Src/porting/gba/gba_frontend.c \
+Core/Src/porting/gba/gba_idle_loop.c \
+Core/Src/porting/gba/gba_audio_filter.c \
+Core/Src/porting/gba/main_gba.c \
+tools/gba_m4a/m4a_hle.c \
+tools/gba_m4a/m4a_gpsp.c
+
+GBA_CXX_SOURCES = \
+$(CORE_GBA)/cpu.cc \
+$(CORE_GBA)/video.cc
+
+GBA_ASM_SOURCES = \
+Core/Src/porting/gba/gba_bios.S
+
 ifneq ("$(wildcard roms/zelda3/zelda3.sfc)","")
 ZELDA3_C_SOURCES = \
 zelda3/zelda_rtl.c \
@@ -820,7 +850,7 @@ include Makefile.common
 
 $(BUILD_DIR)/$(TARGET)_extflash.bin: $(BUILD_DIR)/$(TARGET).elf | $(BUILD_DIR)
 	$(V)$(ECHO) [ BIN ] $(notdir $@)
-	$(V)$(BIN) -j ._itcram_hot -j ._ram_exec -j ._extflash -j .overlay_nes -j .overlay_nes_fceu -j .overlay_gb -j .overlay_sms -j .overlay_col -j .overlay_pce -j .overlay_msx -j .overlay_gw -j .overlay_wsv -j .overlay_md -j .overlay_a7800 -j .overlay_amstrad -j .overlay_zelda3 -j .overlay_smw  -j .overlay_tama $< $(BUILD_DIR)/$(TARGET)_extflash.bin
+	$(V)$(BIN) -j ._itcram_hot -j ._ram_exec -j ._extflash -j .overlay_nes -j .overlay_nes_fceu -j .overlay_gb -j .overlay_sms -j .overlay_col -j .overlay_pce -j .overlay_msx -j .overlay_gw -j .overlay_wsv -j .overlay_md -j .overlay_a7800 -j .overlay_amstrad -j .overlay_zelda3 -j .overlay_smw  -j .overlay_tama -j .overlay_gba -j .overlay_gba_itc $< $(BUILD_DIR)/$(TARGET)_extflash.bin
 
 $(BUILD_DIR)/$(TARGET)_intflash.bin: $(BUILD_DIR)/$(TARGET).elf | $(BUILD_DIR)
 	$(V)$(ECHO) [ BIN ] $(notdir $@)

@@ -379,6 +379,7 @@ PREFIX = arm-none-eabi-
 # either it can be added to the PATH environment variable.
 ifdef GCC_PATH
 CC   = $(GCC_PATH)/$(PREFIX)gcc
+CXX  = $(GCC_PATH)/$(PREFIX)g++
 AS   = $(GCC_PATH)/$(PREFIX)gcc -x assembler-with-cpp
 CP   = $(GCC_PATH)/$(PREFIX)objcopy
 SZ   = $(GCC_PATH)/$(PREFIX)size
@@ -386,6 +387,7 @@ GDB  = $(GCC_PATH)/$(PREFIX)gdb
 DUMP = $(GCC_PATH)/$(PREFIX)objdump
 else
 CC   = $(PREFIX)gcc
+CXX  = $(PREFIX)g++
 AS   = $(PREFIX)gcc -x assembler-with-cpp
 CP   = $(PREFIX)objcopy
 SZ   = $(PREFIX)size
@@ -512,6 +514,8 @@ CFLAGS += -fstack-usage -Wstack-usage=20480
 
 # Generate dependency information
 CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
+
+CXXFLAGS = $(CFLAGS)
 
 LDFLAGS += -Wl,--defsym=__EXTFLASH_OFFSET__=$(EXTFLASH_OFFSET)
 LDFLAGS += -Wl,--defsym=__EXTFLASH_TOTAL_LENGTH__=$(EXTFLASH_SIZE)
@@ -658,9 +662,9 @@ $(BUILD_DIR)/%.o: %.s Makefile.common Makefile $(BUILD_DIR)/config.h | $(BUILD_D
 	$(V)$(ECHO) [ AS ] $(notdir $<)
 	$(V)$(AS) -c $(CFLAGS) $< -o $@
 
-$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) $(A7800_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) Makefile.common Makefile $(LDSCRIPT)
+$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) $(A7800_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) $(GBA_OBJECTS) Makefile.common Makefile $(LDSCRIPT)
 	$(V)$(ECHO) [ LD ] $(notdir $@)
-	$(V)$(CC) $(OBJECTS) $(A7800_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) $(LDFLAGS) -o $@
+	$(V)$(CC) $(OBJECTS) $(A7800_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) $(GBA_OBJECTS) $(LDFLAGS) -o $@
 	$(V)./scripts/extflash_size.sh $@
 
 $(BUILD_DIR)/core/%.o: %.c Makefile.common Makefile $(SDK_HEADERS) $(BUILD_DIR)/config.h | $(BUILD_DIR)
@@ -882,6 +886,61 @@ smw/smw_assets.dat: roms/smw/smw.sfc | $(BUILD_DIR)
 	cp $< smw/assets/smw.sfc
 	$(MAKE) -C smw smw_assets.dat
 
+######################################
+# GBA compile definitions
+######################################
+C_DEFS_GBA = \
+-DROM_BUFFER_SIZE=0 \
+-DOBJ_PER_LINE_MAX=32 \
+-DBUFFER_SIZE=4096 \
+-DGBA_SOUND_FREQUENCY=48000 \
+-DGBA_M4A_HLE
+
+GBA_C_INCLUDES = $(C_INCLUDES) -Iexternal/gpsp -Iexternal/gpsp/libretro/libretro-common/include -Itools/gba_m4a -I./
+
+GBA_WARN_OFF = -Wno-parentheses -Wno-unknown-pragmas -Wno-strict-aliasing -Wno-comment \
+               -Wno-unused-function -Wno-stack-usage -Wno-unused-variable \
+               -Wno-unused-but-set-variable -Wno-sign-compare -Wno-format
+
+gba_is_hot = $(findstring gba_memory.c,$1)
+
+define gba_obj_prereq_gen
+$$(BUILD_DIR)/gba/$(patsubst %.c,%.o,$(notdir $1)): $1 Makefile.common Makefile $$(SDK_HEADERS) | $$(BUILD_DIR)/gba
+	$$(V)$$(ECHO) [ CC gba ] $$(notdir $$<)
+	$$(V)$$(CC) -c $(if $(call gba_is_hot,$1),$$(subst -O2,-O3,$$(CFLAGS)),$$(CFLAGS)) $$(C_DEFS_GBA) $$(GBA_C_INCLUDES) $$(GBA_WARN_OFF) $$< -o $$@
+	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
+
+endef
+
+gba_is_interp = $(findstring cpu.cc,$1)
+
+define gba_cxx_obj_prereq_gen
+$$(BUILD_DIR)/gba/$(patsubst %.cc,%.o,$(notdir $1)): $1 Makefile.common Makefile $$(SDK_HEADERS) | $$(BUILD_DIR)/gba
+	$$(V)$$(ECHO) [ CXX gba ] $$(notdir $$<)
+	$$(V)$$(CXX) -c $(if $(call gba_is_interp,$1),$$(subst -O2,-O3,$$(CXXFLAGS)),$$(CXXFLAGS)) $$(C_DEFS_GBA) $$(GBA_C_INCLUDES) $$(GBA_WARN_OFF) -fno-rtti -fno-exceptions $$< -o $$@
+	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
+
+endef
+
+define gba_asm_obj_prereq_gen
+$$(BUILD_DIR)/gba/$(patsubst %.S,%.o,$(notdir $1)): $1 Makefile.common Makefile | $$(BUILD_DIR)/gba
+	$$(V)$$(ECHO) [ AS gba ] $$(notdir $$<)
+	$$(V)$$(CC) -c $$(ASFLAGS) $$< -o $$@
+	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
+
+endef
+
+$(BUILD_DIR)/gba: | $(BUILD_DIR)
+	$(V)mkdir -p $@
+
+GBA_OBJECTS = $(addprefix $(BUILD_DIR)/gba/,$(notdir $(GBA_C_SOURCES:.c=.o))) \
+              $(addprefix $(BUILD_DIR)/gba/,$(notdir $(GBA_CXX_SOURCES:.cc=.o))) \
+              $(addprefix $(BUILD_DIR)/gba/,$(notdir $(GBA_ASM_SOURCES:.S=.o)))
+
+$(eval $(foreach obj,$(GBA_C_SOURCES),$(call gba_obj_prereq_gen,$(obj))))
+$(eval $(foreach obj,$(GBA_CXX_SOURCES),$(call gba_cxx_obj_prereq_gen,$(obj))))
+$(eval $(foreach obj,$(GBA_ASM_SOURCES),$(call gba_asm_obj_prereq_gen,$(obj))))
+
 $(BUILD_DIR):
 	$(V)mkdir $@
 	$(V)mkdir $@/core
@@ -899,6 +958,7 @@ $(BUILD_DIR):
 	$(V)mkdir $@/zelda3
 	$(V)mkdir $@/smw
 	$(V)mkdir $@/tama
+	$(V)mkdir $@/gba
 
 #######################################
 # Flashing
