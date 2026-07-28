@@ -1228,6 +1228,7 @@ class ROMParser:
         romdef.setdefault('videopac', {})
         romdef.setdefault('homebrew', {'celeste': {'embed': '0'}})
         romdef.setdefault('tama', {})
+        romdef.setdefault('gba', {})
 
         rom_size, img_size, current_id, larger_rom_size = self.generate_system(
             "Core/Src/retro-go/gb_roms.c",
@@ -1640,6 +1641,21 @@ class ROMParser:
         )
         total_rom_size += rom_size
         build_config += "#define ENABLE_EMULATOR_TAMA\n" if rom_size > 0 else ""
+
+        rom_size, img_size, current_id, larger_rom_size = self.generate_system(
+            "Core/Src/retro-go/gba_roms.c",
+            "Game Boy Advance",
+            "gba_system",
+            "gba",
+            ["gba"],
+            "SAVE_GBA_",
+            romdef.get("gba", {}),
+            None,
+            current_id,
+        )
+        total_rom_size += rom_size
+        total_img_size += img_size
+        build_config += "#define ENABLE_EMULATOR_GBA\n" if rom_size > 0 else ""
 
         total_size = total_rom_size + total_img_size
         #total_size +=sega_larger_rom_size

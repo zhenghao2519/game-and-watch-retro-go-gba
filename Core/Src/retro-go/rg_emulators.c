@@ -30,6 +30,7 @@
 #include "main_celeste.h"
 #include "main_tama.h"
 #include "main_a2600.h"
+#include "main_gba.h"
 #include "rg_rtc.h"
 #include "heap.hpp"
 
@@ -688,13 +689,23 @@ void emulator_start(retro_emulator_file_t *file, bool load_state, bool start_pau
       SCB_CleanDCache_by_Addr((uint32_t *)&__RAM_EMU_START__, (size_t)&_OVERLAY_TAMA_SIZE);
       app_main_tama(load_state, start_paused, save_slot);
 #endif
+    } else if(strcmp(emu->system_name, "Game Boy Advance") == 0)  {
+#ifdef ENABLE_EMULATOR_GBA
+      memcpy(&__RAM_EMU_START__, &_OVERLAY_GBA_LOAD_START, (size_t)&_OVERLAY_GBA_SIZE);
+      /* Copy ARM7 interpreter to ITCM */
+      memcpy(&__gba_itc_start__, (uint8_t *)&__RAM_EMU_START__ + (uint32_t)&_OVERLAY_GBA_ITC_LMA_OFFSET, (size_t)&_OVERLAY_GBA_ITC_SIZE);
+      __DSB(); __ISB();
+      memset(&_OVERLAY_GBA_BSS_START, 0x0, (size_t)&_OVERLAY_GBA_BSS_SIZE);
+      SCB_CleanDCache_by_Addr((uint32_t *)&__RAM_EMU_START__, (size_t)&_OVERLAY_GBA_SIZE);
+      app_main_gba(load_state, start_paused, save_slot);
+#endif
     }
-    
+
 }
 
 void emulators_init()
 {
-#if !( defined(ENABLE_EMULATOR_GB) || defined(ENABLE_EMULATOR_NES) || defined(ENABLE_EMULATOR_SMS) || defined(ENABLE_EMULATOR_GG) || defined(ENABLE_EMULATOR_COL) || defined(ENABLE_EMULATOR_SG1000) || defined(ENABLE_EMULATOR_PCE) || defined(ENABLE_EMULATOR_GW) || defined(ENABLE_EMULATOR_MSX) || defined(ENABLE_EMULATOR_WSV) || defined(ENABLE_EMULATOR_MD) || defined(ENABLE_EMULATOR_A7800) || defined(ENABLE_EMULATOR_AMSTRAD) || defined(ENABLE_EMULATOR_VIDEOPAC) || defined(ENABLE_HOMEBREW)|| defined(ENABLE_HOMEBREW_ZELDA3) || defined(ENABLE_HOMEBREW_SMW) || defined(ENABLE_EMULATOR_TAMA) || defined(ENABLE_EMULATOR_A2600))
+#if !( defined(ENABLE_EMULATOR_GB) || defined(ENABLE_EMULATOR_NES) || defined(ENABLE_EMULATOR_SMS) || defined(ENABLE_EMULATOR_GG) || defined(ENABLE_EMULATOR_COL) || defined(ENABLE_EMULATOR_SG1000) || defined(ENABLE_EMULATOR_PCE) || defined(ENABLE_EMULATOR_GW) || defined(ENABLE_EMULATOR_MSX) || defined(ENABLE_EMULATOR_WSV) || defined(ENABLE_EMULATOR_MD) || defined(ENABLE_EMULATOR_A7800) || defined(ENABLE_EMULATOR_AMSTRAD) || defined(ENABLE_EMULATOR_VIDEOPAC) || defined(ENABLE_HOMEBREW)|| defined(ENABLE_HOMEBREW_ZELDA3) || defined(ENABLE_HOMEBREW_SMW) || defined(ENABLE_EMULATOR_TAMA) || defined(ENABLE_EMULATOR_A2600) || defined(ENABLE_EMULATOR_GBA))
     // Add gameboy as a placeholder in case no emulator is built.
     add_emulator("Nintendo Gameboy", "gb", "gb", "tgbdual-go", 0, &pad_gb, &header_gb);
 #endif
@@ -775,6 +786,10 @@ void emulators_init()
 
 #ifdef ENABLE_EMULATOR_TAMA
     add_emulator("Tamagotchi", "tama", "b", "tamalib", 0, &pad_tama, &header_tama);
+#endif
+
+#ifdef ENABLE_EMULATOR_GBA
+    add_emulator("Game Boy Advance", "gba", "gba", "gpsp", 0, &pad_gb, &header_gb);
 #endif
 
     // add_emulator("ColecoVision", "col", "col", "smsplusgx-go", 0, logo_col, header_col);
