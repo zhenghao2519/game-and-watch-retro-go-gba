@@ -51,3 +51,7 @@
 [submodule "external/stella2014-go"]
 	path = external/stella2014-go
 	url = https://github.com/sylverb/stella2014-go.git
+[submodule "external/gpsp"]
+	path = external/gpsp
+	url = https://github.com/sylverb/gpsp.git
+	branch = gnw-port
