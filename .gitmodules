@@ -31,3 +31,7 @@
 [submodule "tamalib"]
 	path = tamalib
 	url = https://github.com/BenjaminSoelberg/tamalib.git
+[submodule "external/gpsp"]
+	path = external/gpsp
+	url = https://github.com/sylverb/gpsp.git
+	branch = gnw-port
