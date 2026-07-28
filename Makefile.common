@@ -749,9 +749,9 @@ $(BUILD_DIR)/%.o: %.s Makefile.common Makefile $(BUILD_DIR)/config.h | $(BUILD_D
 	$(V)$(ECHO) [ AS ] $(notdir $<)
 	$(V)$(AS) -c $(CFLAGS) $< -o $@
 
-$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) $(TAMP_OBJECTS) $(A2600_OBJECTS) $(A7800_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(TGBDUAL_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(VIDEOPAC_OBJECTS) $(CELESTE_OBJECTS) $(CXX_OBJECTS) $(TGBDUAL_CXX_OBJECTS) $(A2600_CXX_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) Makefile.common Makefile $(LDSCRIPT)
+$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) $(TAMP_OBJECTS) $(A2600_OBJECTS) $(A7800_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(TGBDUAL_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(VIDEOPAC_OBJECTS) $(CELESTE_OBJECTS) $(CXX_OBJECTS) $(TGBDUAL_CXX_OBJECTS) $(A2600_CXX_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) $(GBA_OBJECTS) Makefile.common Makefile $(LDSCRIPT)
 	$(V)$(ECHO) [ LD ] $(notdir $@)
-	$(V)$(CC) $(OBJECTS) $(A2600_OBJECTS) $(A7800_OBJECTS) $(TAMP_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(TGBDUAL_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(VIDEOPAC_OBJECTS) $(CELESTE_OBJECTS) $(CXX_OBJECTS) $(TGBDUAL_CXX_OBJECTS) $(A2600_CXX_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) $(LDFLAGS) -o $@
+	$(V)$(CC) $(OBJECTS) $(A2600_OBJECTS) $(A7800_OBJECTS) $(TAMP_OBJECTS) $(NES_OBJECTS) $(NES_FCEU_OBJECTS) $(GNUBOY_OBJECTS) $(TGBDUAL_OBJECTS) $(SMSPLUSGX_OBJECTS) $(PCE_OBJECTS) $(MSX_OBJECTS) $(GW_OBJECTS) $(WSV_OBJECTS) $(MD_OBJECTS) $(AMSTRAD_OBJECTS) $(VIDEOPAC_OBJECTS) $(CELESTE_OBJECTS) $(CXX_OBJECTS) $(TGBDUAL_CXX_OBJECTS) $(A2600_CXX_OBJECTS) $(ZELDA3_OBJECTS) $(SMW_OBJECTS) $(TAMA_OBJECTS) $(GBA_OBJECTS) $(LDFLAGS) -o $@
 	$(V)./scripts/extflash_size.sh $@
 
 $(BUILD_DIR)/core/%.o: %.c Makefile.common Makefile $(SDK_HEADERS) $(BUILD_DIR)/config.h | $(BUILD_DIR)
@@ -1008,6 +1008,61 @@ external/smw/smw_assets.dat: roms/smw/smw.sfc | $(BUILD_DIR)
 	cp $< external/smw/assets/smw.sfc
 	$(MAKE) -C external/smw smw_assets.dat
 
+######################################
+# GBA compile definitions
+######################################
+C_DEFS_GBA = \
+-DROM_BUFFER_SIZE=0 \
+-DOBJ_PER_LINE_MAX=32 \
+-DBUFFER_SIZE=4096 \
+-DGBA_SOUND_FREQUENCY=48000 \
+-DGBA_M4A_HLE
+
+GBA_C_INCLUDES = $(C_INCLUDES) -Iexternal/gpsp -Iexternal/gpsp/libretro/libretro-common/include -Itools/gba_m4a -I./
+
+GBA_WARN_OFF = -Wno-parentheses -Wno-unknown-pragmas -Wno-strict-aliasing -Wno-comment \
+               -Wno-unused-function -Wno-stack-usage -Wno-unused-variable \
+               -Wno-unused-but-set-variable -Wno-sign-compare -Wno-format
+
+gba_is_hot = $(findstring gba_memory.c,$1)
+
+define gba_obj_prereq_gen
+$$(BUILD_DIR)/gba/$(patsubst %.c,%.o,$(notdir $1)): $1 Makefile.common Makefile $$(SDK_HEADERS) | $$(BUILD_DIR)/gba
+	$$(V)$$(ECHO) [ CC gba ] $$(notdir $$<)
+	$$(V)$$(CC) -c $(if $(call gba_is_hot,$1),$$(subst -O2,-O3,$$(CFLAGS)),$$(CFLAGS)) $$(C_DEFS_GBA) $$(GBA_C_INCLUDES) $$(GBA_WARN_OFF) $$< -o $$@
+	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
+
+endef
+
+gba_is_interp = $(findstring cpu.cc,$1)
+
+define gba_cxx_obj_prereq_gen
+$$(BUILD_DIR)/gba/$(patsubst %.cc,%.o,$(notdir $1)): $1 Makefile.common Makefile $$(SDK_HEADERS) | $$(BUILD_DIR)/gba
+	$$(V)$$(ECHO) [ CXX gba ] $$(notdir $$<)
+	$$(V)$$(CXX) -c $(if $(call gba_is_interp,$1),$$(subst -O2,-O3,$$(CXXFLAGS)),$$(CXXFLAGS)) $$(C_DEFS_GBA) $$(GBA_C_INCLUDES) $$(GBA_WARN_OFF) -fno-rtti -fno-exceptions $$< -o $$@
+	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
+
+endef
+
+define gba_asm_obj_prereq_gen
+$$(BUILD_DIR)/gba/$(patsubst %.S,%.o,$(notdir $1)): $1 Makefile.common Makefile | $$(BUILD_DIR)/gba
+	$$(V)$$(ECHO) [ AS gba ] $$(notdir $$<)
+	$$(V)$$(CC) -c $$(ASFLAGS) $$< -o $$@
+	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
+
+endef
+
+$(BUILD_DIR)/gba: | $(BUILD_DIR)
+	$(V)mkdir -p $@
+
+GBA_OBJECTS = $(addprefix $(BUILD_DIR)/gba/,$(notdir $(GBA_C_SOURCES:.c=.o))) \
+              $(addprefix $(BUILD_DIR)/gba/,$(notdir $(GBA_CXX_SOURCES:.cc=.o))) \
+              $(addprefix $(BUILD_DIR)/gba/,$(notdir $(GBA_ASM_SOURCES:.S=.o)))
+
+$(eval $(foreach obj,$(GBA_C_SOURCES),$(call gba_obj_prereq_gen,$(obj))))
+$(eval $(foreach obj,$(GBA_CXX_SOURCES),$(call gba_cxx_obj_prereq_gen,$(obj))))
+$(eval $(foreach obj,$(GBA_ASM_SOURCES),$(call gba_asm_obj_prereq_gen,$(obj))))
+
 $(BUILD_DIR):
 	$(V)mkdir $@
 	$(V)mkdir $@/tamp
@@ -1030,6 +1085,7 @@ $(BUILD_DIR):
 	$(V)mkdir $@/videopac
 	$(V)mkdir $@/celeste
 	$(V)mkdir $@/tama
+	$(V)mkdir $@/gba
 
 #######################################
 # Flashing
