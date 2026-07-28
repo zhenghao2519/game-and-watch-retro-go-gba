@@ -583,6 +583,60 @@ SECTIONS
   }
   _OVERLAY_TAMA_BSS_SIZE = SIZEOF(.overlay_tama_bss);
 
+  .overlay_gba __RAM_EMU_START__ : {
+    . = ALIGN(4);
+    __ram_emu_gba_start__ = .;
+    _GBA_MAIN_CODE_START = .;
+    build/gba/main_gba.o (.data .data* .text .text* .rodata .rodata*)
+    . = ALIGN(4);
+    _GBA_MAIN_CODE_END = .;
+    build/gba/gba_frontend.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/gba_idle_loop.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/gba_audio_filter.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/gba_memory.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/sound.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/main.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/savestate.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/input.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/cheats.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/serial.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/serial_proto.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/gbp.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/rfu.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/m4a_hle.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/m4a_gpsp.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/video.o (.data .data* .text .text* .rodata .rodata*)
+    build/gba/gba_bios.o (.rodata .rodata*)
+    . = ALIGN(4);
+    _OVERLAY_GBA_LOAD_END = .;
+  } AT> EXTFLASH
+  _OVERLAY_GBA_LOAD_START = LOADADDR(.overlay_gba);
+  _OVERLAY_GBA_SIZE = SIZEOF(.overlay_gba);
+
+  .overlay_gba_itc (ORIGIN(ITCMRAM) + 0x4) : {
+    . = ALIGN(4);
+    __gba_itc_start__ = .;
+    build/gba/cpu.o (.text .text* .rodata .rodata*)
+    . = ALIGN(4);
+    __gba_itc_end__ = .;
+    ASSERT(ABSOLUTE(__gba_itc_end__) <= ORIGIN(ITCMRAM) + LENGTH(ITCMRAM), "Error: GBA ITC overflow");
+  } AT> EXTFLASH
+  _OVERLAY_GBA_ITC_SIZE = SIZEOF(.overlay_gba_itc);
+  _OVERLAY_GBA_ITC_LMA_OFFSET = LOADADDR(.overlay_gba_itc) - LOADADDR(.overlay_gba);
+
+  .overlay_gba_bss _OVERLAY_GBA_LOAD_END : {
+    . = ALIGN(4);
+    _OVERLAY_GBA_BSS_START = .;
+    build/gba/*.o (.bss .bss*)
+    . = ALIGN(4);
+    build/gba/*.o (COMMON)
+    . = ALIGN(4);
+    __ram_emu_gba_end__ = .;
+    _OVERLAY_GBA_BSS_END = .;
+    ASSERT(ABSOLUTE(_OVERLAY_GBA_BSS_END) < __RAM_EMU_END__, "Error: GBA BSS overflow");
+  }
+  _OVERLAY_GBA_BSS_SIZE = SIZEOF(.overlay_gba_bss);
+
   /* Place this symbol after the last overlay definition */
   .overlay_end : {
     __extflash_end__ = .;
@@ -591,6 +645,11 @@ SECTIONS
   ._ram_space_check_md : {
     . = . + SIZEOF(.overlay_md);
     . = . + SIZEOF(.overlay_md_bss);
+  } >RAM_EMU
+
+  ._ram_space_check_gba : {
+    . = . + SIZEOF(.overlay_gba);
+    . = . + SIZEOF(.overlay_gba_bss);
   } >RAM_EMU
 
   ._cacheflash (NOLOAD) :
@@ -636,6 +695,14 @@ SECTIONS
     *(.emulator_data)
     __ram_end__ = .;
   } > RAM
+
+  .gba_ahbram (NOLOAD) : {
+    __gba_ahb_start__ = .;
+    build/gba/gba_memory.o (.bss.bios_rom)
+    build/gba/cheats.o (.bss.cheats)
+    build/gba/sound.o (.bss.sound_buffer)
+    __gba_ahb_end__ = .;
+  } > AHBRAM
 
   ._ahbram (NOLOAD) :
   {
