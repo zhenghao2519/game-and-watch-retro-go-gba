@@ -1216,6 +1216,7 @@ class ROMParser:
         })
         romdef.setdefault('smw', {'smw': {'embed': '0'}})
         romdef.setdefault('tama', {})
+        romdef.setdefault('gba', {})
 
         system_save_size, save_size, rom_size, img_size, current_id, larger_rom_size = self.generate_system(
             "Core/Src/retro-go/gb_roms.c",
@@ -1614,6 +1615,23 @@ class ROMParser:
         total_rom_size += rom_size
         total_img_size += img_size
         build_config += "#define ENABLE_EMULATOR_TAMA\n" if rom_size > 0 else ""
+        if system_save_size > larger_save_size : larger_save_size = system_save_size
+
+        system_save_size, save_size, rom_size, img_size, current_id, larger_rom_size = self.generate_system(
+            "Core/Src/retro-go/gba_roms.c",
+            "Game Boy Advance",
+            "gba_system",
+            "gba",
+            ["gba"],
+            "SAVE_GBA_",
+            romdef.get("gba", {}),
+            None,
+            current_id,
+        )
+        total_save_size += save_size
+        total_rom_size += rom_size
+        total_img_size += img_size
+        build_config += "#define ENABLE_EMULATOR_GBA\n" if rom_size > 0 else ""
         if system_save_size > larger_save_size : larger_save_size = system_save_size
 
         total_size = total_save_size + total_rom_size + total_img_size
