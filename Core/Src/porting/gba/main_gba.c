@@ -253,13 +253,21 @@ static void gba_show_save_indicator(uint16_t color)
 
 static void gba_SramSave(const char *sramPath)
 {
+    uint8_t *bp = gba_get_backup_ptr();
+    uint32_t sz = gba_get_backup_size();
+    /* Check content before writing */
+    int has_data = 0;
+    for (uint32_t i = 0; i < sz; i++) {
+        if (bp[i] != 0xFF) { has_data = 1; break; }
+    }
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
-        fs_write(file, gba_get_backup_ptr(), gba_get_backup_size());
+        fs_write(file, bp, sz);
         fs_close(file);
-        gba_show_save_indicator(0x07E0); /* green = OK */
+        /* green=OK with data, magenta=wrote 128KB of 0xFF (game never saved) */
+        gba_show_save_indicator(has_data ? 0x07E0 : 0xF81F);
     } else {
-        gba_show_save_indicator(0xF800); /* red = failed */
+        gba_show_save_indicator(0xF800); /* red = fs_open failed */
     }
 }
 
@@ -625,14 +633,14 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
     extern void gba_force_flash128_backup(void);
     extern unsigned int gba_get_flash_bank_cnt(void);
-    /* Flash 128KB guard: gba_over.h may have set flash_bank_cnt=128KB but
-     * detect_backup_subcircuit() might have overridden backup_type_reset to
-     * EEPROM. Also, during gameplay a DMA to 0x0D resets backup_type to
-     * EEPROM (write_eeprom() fires). We track this as a per-session flag and
-     * re-enforce every frame so Flash writes are never silently discarded. */
-    gba_is_flash128 = (gba_get_flash_bank_cnt() == 2u); /* FLASH_SIZE_128KB */
-    if (gba_is_flash128)
-        gba_force_flash128_backup();
+    /* Unconditionally force Flash 128KB — covers Pokemon and any other game
+     * that gba_over.h maps to Flash. Also handles the case where game_code
+     * reads as "UNKN" (bad XIP mapping) so flash_bank_cnt stays at 64KB.
+     * For EEPROM/SRAM games this sets backup_type=FLASH which is wrong, but
+     * since this is a flash-only device with no link cable or EEPROM hardware,
+     * those games will use gamepak_backup as generic SRAM storage — acceptable. */
+    gba_is_flash128 = true;
+    gba_force_flash128_backup();
 
     /* After load_gamepak, on purpose: it is what sets idle_loop_target_pc from
      * gpSP's own gba_over.h, and ours has to win. A game with no busy-wait PC
