@@ -234,17 +234,5 @@ void gba_force_flash128_backup(void)
     flash_device_id   = FLASH_DEVICE_SANYO_128KB;
 }
 
-/* SRAM mode: bypass Flash command sequence entirely. The game writes
- * directly to 0x0E000000 and we store it as plain bytes. Works for
- * games that use the SRAM interface rather than Flash commands.
- * Also useful as a diagnostic: if saves work with SRAM mode, the
- * Flash command sequence parsing is the broken piece. */
-#define BACKUP_SRAM_VAL 0u
-void gba_force_sram_backup(void)
-{
-    backup_type       = BACKUP_SRAM_VAL;
-    backup_type_reset = BACKUP_SRAM_VAL;
-}
-
 unsigned int gba_get_flash_bank_cnt(void) { return flash_bank_cnt; }
 

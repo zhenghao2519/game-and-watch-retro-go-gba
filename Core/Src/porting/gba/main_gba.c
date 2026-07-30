@@ -253,27 +253,13 @@ static void gba_show_save_indicator(uint16_t color)
 
 static void gba_SramSave(const char *sramPath)
 {
-    uint8_t *bp = gba_get_backup_ptr();
-    uint32_t sz = gba_get_backup_size();
-    /* Check content before writing */
-    int has_data = 0;
-    for (uint32_t i = 0; i < sz; i++) {
-        if (bp[i] != 0xFF) { has_data = 1; break; }
-    }
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
-        fs_write(file, bp, sz);
+        fs_write(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
-        if (has_data)
-            gba_show_save_indicator(0x07E0);  /* green = data written */
-        else {
-            /* No data — check if sentinel was ever overwritten */
-            /* orange=sentinel overwritten (execute_arm writes to gamepak_backup)
-             * magenta=sentinel intact (execute_arm never touches it) */
-            gba_show_save_indicator(sentinel_overwritten ? 0xFC00 : 0xF81F);
-        }
+        gba_show_save_indicator(0x07E0); /* green = saved */
     } else {
-        gba_show_save_indicator(0xF800); /* red = fs_open failed */
+        gba_show_save_indicator(0xF800); /* red = failed */
     }
 }
 
@@ -283,18 +269,6 @@ static void gba_SramLoad(const char *sramPath)
     if (file) {
         fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
-        extern void gba_force_sram_backup(void);
-        gba_force_sram_backup();
-
-        /* Visual check: scan entire backup for non-0xFF data */
-        uint8_t *bp = gba_get_backup_ptr();
-        int found = 0;
-        for (unsigned i = 0; i < gba_get_backup_size(); i++) {
-            if (bp[i] != 0xFF) { found = 1; break; }
-        }
-        gba_show_save_indicator(found ? 0x001F : 0xF81F); /* blue=has data, magenta=all 0xFF */
-    } else {
-        gba_show_save_indicator(0xFFE0); /* yellow=no file */
     }
 }
 
@@ -549,7 +523,6 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 {
     odroid_gamepad_state_t joystick;
     bool gba_is_flash128 = false;
-    bool sentinel_overwritten = false;
     /* Read-only (enabled = -1): the frame budget is 16.67ms, and these two say who
      * is spending it. If Emulate dominates, the answer is clock and the interpreter.
      * If Draw does, the answer is the renderer and where its code lives. */
@@ -738,29 +711,18 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
         gba_input_read(&joystick);
 
-        /* Force backup_type=SRAM before every execute_arm(). In SRAM mode
-         * write_backup() stores bytes directly without Flash command sequence.
-         * This bypasses the Flash protocol entirely — if Pokemon writes its
-         * save data to 0x0E000000, it lands in gamepak_backup regardless of
-         * the command sequence state. The data may not be in Flash format but
-         * on reload we force SRAM again so the game reads it back the same way.
-         * Diagnostic: if saves work now, the Flash command parsing was broken. */
-        extern void gba_force_sram_backup(void);
+        /* Re-enforce Flash 128KB BEFORE execute_arm() each frame.
+         * A DMA write to 0x0D000000 (link-cable init) within execute_arm()
+         * triggers write_eeprom() which sets backup_type=EEPROM, discarding
+         * all Flash writes in that same call. Forcing before the call ensures
+         * backup_type=FLASH at the start of every frame. */
         if (gba_is_flash128)
-            gba_force_sram_backup();
-
-        /* Diagnostic: write sentinel to gamepak_backup[0] before execute_arm,
-         * check after. If it changes, execute_arm is overwriting the backup. */
-        gba_get_backup_ptr()[0] = 0xAB;
+            gba_force_flash128_backup();
 
         common_emu_clear_dwt_cycles();
         execute_arm(execute_cycles);
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
-
-        /* Check if execute_arm overwrote our sentinel */
-        if (gba_get_backup_ptr()[0] != 0xAB)
-            sentinel_overwritten = true;
 
         /* Blit only when LCD has finished the previous swap — if still
          * pending, skip this display update (frame drop) but keep emulating.
@@ -774,24 +736,21 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
         gba_pcm_submit();
 
-        /* Auto-save gamepak_backup every ~5s (300 frames at 60fps).
-         * This ensures in-game saves reach flash even if the menu save
-         * path has issues with backup_type timing. Only write if backup
-         * has changed since last save (dirty detection via simple hash). */
+        /* Auto-save gamepak_backup every ~5s (300 frames).
+         * Samples every 128th byte for a simple dirty check. */
         static uint32_t autosave_frame = 0;
-        static uint32_t last_backup_hash = 0;
+        static uint32_t last_backup_hash = 0xFFFFFFFF;
         if (++autosave_frame >= 300) {
             autosave_frame = 0;
             uint8_t *bp = gba_get_backup_ptr();
             uint32_t sz = gba_get_backup_size();
-            /* Fast hash: XOR every 256th byte */
             uint32_t hash = 0;
-            for (uint32_t i = 0; i < sz; i += 256)
-                hash ^= (uint32_t)bp[i] | ((uint32_t)bp[i] << 8);
+            for (uint32_t i = 0; i + 1 < sz; i += 128)
+                hash ^= ((uint32_t)bp[i]) | ((uint32_t)bp[i + 1] << 8);
             if (hash != last_backup_hash) {
                 last_backup_hash = hash;
                 char sramPath[FS_MAX_PATH_SIZE];
-                odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
+                odroid_system_get_sram_path(sramPath, sizeof(sramPath), save_slot);
                 fs_file_t *f = fs_open(sramPath, FS_WRITE, FS_RAW);
                 if (f) { fs_write(f, bp, sz); fs_close(f); }
             }
