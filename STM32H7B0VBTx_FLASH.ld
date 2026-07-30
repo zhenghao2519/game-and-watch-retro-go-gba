@@ -145,6 +145,10 @@ MEMORY
   EXTFLASH   (xr ) : ORIGIN = __EXTFLASH_START__,  LENGTH = __EXTFLASH_LENGTH__
   CACHEFLASH (xr ) : ORIGIN = __CACHEFLASH_START__,  LENGTH = __CACHEFLASH_LENGTH__
   FILESYSTEM (xr ) : ORIGIN = __FILESYSTEM_START__, LENGTH = __FILESYSTEM_LENGTH__
+
+  /* GBA: cold code + rodata executed directly from ext flash (XIP). Linked at a
+   * fixed ext flash address; no runtime relocation needed. */
+  GBA_CODE   (x) : ORIGIN = 0x90800000,   LENGTH = 512K
 }
 
 
@@ -654,40 +658,93 @@ SECTIONS
   }
   _OVERLAY_TAMA_BSS_SIZE = SIZEOF(.overlay_tama_bss);
 
+  /* ============================== GBA (gpSP) ==============================
+   * Split across 4 regions: ITCM (interpreter), RAM_EMU (hot code + BSS),
+   * AHB SRAM (low-freq BSS), ext flash XIP (cold code + rodata).
+   *
+   * .gba_ahbram is declared FIRST so its named BSS sections are claimed
+   * before the wildcard in .overlay_gba_bss. */
+
+  .gba_ahbram (NOLOAD) : {
+    . = ALIGN(8);
+    __gba_ahb_start__ = .;
+    build/gba/gba_memory.o (.bss.bios_rom)
+    build/gba/cheats.o (.bss.cheats)
+    build/gba/sound.o (.bss.sound_buffer)
+    . = ALIGN(8);
+    __gba_ahb_end__ = .;
+  } > AHBRAM
+
+  /* RAM overlay: hot code that cpu.o calls + all writable data.
+   * Declared BEFORE .xip_gba — first claim wins for shared objects. */
   .overlay_gba __RAM_EMU_START__ : {
     . = ALIGN(4);
     __ram_emu_gba_start__ = .;
     _GBA_MAIN_CODE_START = .;
-    build/gba/main_gba.o (.data .data* .text .text* .rodata .rodata*)
+      build/gba/main_gba.o (.data .data* .text .text* .rodata .rodata*)
     . = ALIGN(4);
     _GBA_MAIN_CODE_END = .;
-    build/gba/gba_frontend.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/gba_idle_loop.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/gba_audio_filter.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/gba_memory.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/sound.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/main.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/savestate.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/input.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/cheats.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/serial.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/serial_proto.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/gbp.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/rfu.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/m4a_hle.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/m4a_gpsp.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/video.o (.data .data* .text .text* .rodata .rodata*)
-    build/gba/gba_bios.o (.rodata .rodata*)
+
+      /* Hot renderer: tile scanline renderers + sprite + blend + dispatch */
+      build/gba/video.o (.text._Z20render_scanline_text*)
+      build/gba/video.o (.text._Z13render_object*)
+      build/gba/video.o (.text._ZL16render_w_effects*)
+      build/gba/video.o (.text._ZL9order_obj*)
+      build/gba/video.o (.text.update_scanline)
+
+      /* All .data from all objects (small, writable) */
+      build/gba/*.o (.data .data*)
+
+      /* .text for objects cpu.o calls — exclude cold files and video.o */
+      EXCLUDE_FILE(*/cpu.o */video.o */serial.o */serial_proto.o */gbp.o */rfu.o
+                   */input.o */gba_frontend.o */m4a_hle.o) build/gba/*.o (.text .text*)
+
+      /* cpu.o rodata: referenced from ITCM, must be at final address */
+      build/gba/cpu.o (.rodata .rodata*)
+
+      /* M4A mixer tables — hot, dereferenced from RAM code */
+      build/gba/m4a_hle.o (.rodata .rodata*)
+      build/gba/m4a_gpsp.o (.rodata .rodata*)
     . = ALIGN(4);
     _OVERLAY_GBA_LOAD_END = .;
   } AT> EXTFLASH
+
+  /* Cold code: executed directly from ext flash via QSPI XIP.
+   * No sentinel relocation needed — linker assigns final VMA. */
+  .xip_gba : {
+    . = ALIGN(8);
+    __xip_gba_start__ = .;
+      /* Cold renderer: bitmap modes, affine paths, setup */
+      build/gba/video.o (.text .text*)
+      /* Cold: link cable, GBP, wireless, pad, frontend */
+      build/gba/serial.o (.text .text*)
+      build/gba/serial_proto.o (.text .text*)
+      build/gba/gbp.o (.text .text*)
+      build/gba/rfu.o (.text .text*)
+      build/gba/input.o (.text .text*)
+      build/gba/gba_frontend.o (.text .text*)
+      /* M4A mixer transliterations — ~102KB, one variant per game per frame */
+      build/gba/m4a_hle.o (.text .text*)
+    . = ALIGN(4);
+  } > GBA_CODE AT> EXTFLASH
+
+  /* All remaining rodata: BIOS image, override tables, renderer/sound tables */
+  .rodata_gba : {
+    . = ALIGN(8);
+    __rodata_gba_start__ = .;
+      build/gba/*.o (.rodata .rodata*)
+    . = ALIGN(4);
+    __rodata_gba_end__ = .;
+  } > GBA_CODE AT> EXTFLASH
+
   _OVERLAY_GBA_LOAD_START = LOADADDR(.overlay_gba);
   _OVERLAY_GBA_SIZE = SIZEOF(.overlay_gba);
 
+  /* ARM7 interpreter -> ITCM (zero wait states) */
   .overlay_gba_itc (ORIGIN(ITCMRAM) + 0x4) : {
     . = ALIGN(4);
     __gba_itc_start__ = .;
-    build/gba/cpu.o (.text .text* .rodata .rodata*)
+    build/gba/cpu.o (.text .text*)
     . = ALIGN(4);
     __gba_itc_end__ = .;
     ASSERT(ABSOLUTE(__gba_itc_end__) <= ORIGIN(ITCMRAM) + LENGTH(ITCMRAM), "Error: GBA ITC overflow");
@@ -695,6 +752,7 @@ SECTIONS
   _OVERLAY_GBA_ITC_SIZE = SIZEOF(.overlay_gba_itc);
   _OVERLAY_GBA_ITC_LMA_OFFSET = LOADADDR(.overlay_gba_itc) - LOADADDR(.overlay_gba);
 
+  /* BSS: wildcard catches everything not already claimed by .gba_ahbram */
   .overlay_gba_bss _OVERLAY_GBA_LOAD_END : {
     . = ALIGN(4);
     _OVERLAY_GBA_BSS_START = .;
@@ -718,10 +776,11 @@ SECTIONS
     . = . + SIZEOF(.overlay_md_bss);
   } >RAM_EMU
 
-  ._ram_space_check_gba : {
+  ._ram_space_check_gba __RAM_EMU_START__ (NOLOAD) : {
     . = . + SIZEOF(.overlay_gba);
     . = . + SIZEOF(.overlay_gba_bss);
-  } >RAM_EMU
+    ASSERT(. <= __RAM_EMU_END__, "Error: GBA overlay exceeds RAM_EMU");
+  } > RAM_EMU
 
   ._cacheflash (NOLOAD) :
   {
@@ -744,14 +803,6 @@ SECTIONS
     *(.emulator_data)
     __ram_end__ = .;
   } > RAM
-
-  .gba_ahbram (NOLOAD) : {
-    __gba_ahb_start__ = .;
-    build/gba/gba_memory.o (.bss.bios_rom)
-    build/gba/cheats.o (.bss.cheats)
-    build/gba/sound.o (.bss.sound_buffer)
-    __gba_ahb_end__ = .;
-  } > AHBRAM
 
   ._ahbram (NOLOAD) :
   {
