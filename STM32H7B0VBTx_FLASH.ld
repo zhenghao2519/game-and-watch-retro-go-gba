@@ -706,6 +706,22 @@ SECTIONS
     _OVERLAY_GBA_LOAD_END = .;
   } AT> EXTFLASH
 
+  /* ARM7 interpreter -> ITCM (zero wait states).
+   * MUST be immediately after .overlay_gba in LMA so that
+   * _OVERLAY_GBA_ITC_LMA_OFFSET points within the memcpy'd block. */
+  .overlay_gba_itc (ORIGIN(ITCMRAM) + 0x4) : {
+    . = ALIGN(4);
+    __gba_itc_start__ = .;
+    build/gba/cpu.o (.text .text*)
+    . = ALIGN(4);
+    __gba_itc_end__ = .;
+    ASSERT(ABSOLUTE(__gba_itc_end__) <= ORIGIN(ITCMRAM) + LENGTH(ITCMRAM), "Error: GBA ITC overflow");
+  } AT> EXTFLASH
+  _OVERLAY_GBA_LOAD_START = LOADADDR(.overlay_gba);
+  _OVERLAY_GBA_SIZE = SIZEOF(.overlay_gba) + SIZEOF(.overlay_gba_itc);
+  _OVERLAY_GBA_ITC_SIZE = SIZEOF(.overlay_gba_itc);
+  _OVERLAY_GBA_ITC_LMA_OFFSET = LOADADDR(.overlay_gba_itc) - LOADADDR(.overlay_gba);
+
   /* Cold code: executed directly from ext flash via QSPI memory-mapped XIP.
    * VMA = LMA (both in EXTFLASH region) so the CPU fetches instructions
    * directly from the flash address where the linker places them. */
@@ -734,21 +750,6 @@ SECTIONS
     . = ALIGN(4);
     __rodata_gba_end__ = .;
   } > EXTFLASH
-
-  _OVERLAY_GBA_LOAD_START = LOADADDR(.overlay_gba);
-  _OVERLAY_GBA_SIZE = SIZEOF(.overlay_gba);
-
-  /* ARM7 interpreter -> ITCM (zero wait states) */
-  .overlay_gba_itc (ORIGIN(ITCMRAM) + 0x4) : {
-    . = ALIGN(4);
-    __gba_itc_start__ = .;
-    build/gba/cpu.o (.text .text*)
-    . = ALIGN(4);
-    __gba_itc_end__ = .;
-    ASSERT(ABSOLUTE(__gba_itc_end__) <= ORIGIN(ITCMRAM) + LENGTH(ITCMRAM), "Error: GBA ITC overflow");
-  } AT> EXTFLASH
-  _OVERLAY_GBA_ITC_SIZE = SIZEOF(.overlay_gba_itc);
-  _OVERLAY_GBA_ITC_LMA_OFFSET = LOADADDR(.overlay_gba_itc) - LOADADDR(.overlay_gba);
 
   /* BSS: wildcard catches everything not already claimed by .gba_ahbram */
   .overlay_gba_bss _OVERLAY_GBA_LOAD_END : {
