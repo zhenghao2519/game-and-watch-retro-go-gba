@@ -238,19 +238,32 @@ static void gba_load_bios(void)
  * On filesystem_wip, saves go through the fs_open/fs_write filesystem layer. */
 static void gba_SramSave(const char *sramPath)
 {
+    printf("gba: saving SRAM to [%s] (%d bytes, first4=%02x%02x%02x%02x)\n",
+           sramPath, (int)sizeof(gamepak_backup),
+           gamepak_backup[0], gamepak_backup[1],
+           gamepak_backup[2], gamepak_backup[3]);
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
         fs_write(file, gamepak_backup, sizeof(gamepak_backup));
         fs_close(file);
+        printf("gba: SRAM saved OK\n");
+    } else {
+        printf("gba: SRAM save FAILED (fs_open returned NULL)\n");
     }
 }
 
 static void gba_SramLoad(const char *sramPath)
 {
+    printf("gba: loading SRAM from [%s]\n", sramPath);
     fs_file_t *file = fs_open(sramPath, FS_READ, FS_RAW);
     if (file) {
-        fs_read(file, gamepak_backup, sizeof(gamepak_backup));
+        int n = fs_read(file, gamepak_backup, sizeof(gamepak_backup));
         fs_close(file);
+        printf("gba: SRAM loaded %d bytes, first4=%02x%02x%02x%02x\n",
+               n, gamepak_backup[0], gamepak_backup[1],
+               gamepak_backup[2], gamepak_backup[3]);
+    } else {
+        printf("gba: SRAM load: no save file found\n");
     }
 }
 
