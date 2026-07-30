@@ -533,6 +533,7 @@ static void gba_input_read(odroid_gamepad_state_t *joystick)
 void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 {
     odroid_gamepad_state_t joystick;
+    bool gba_is_flash128 = false;
     /* Read-only (enabled = -1): the frame budget is 16.67ms, and these two say who
      * is spending it. If Emulate dominates, the answer is clock and the interpreter.
      * If Draw does, the answer is the renderer and where its code lives. */
@@ -622,14 +623,16 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
                      SERIAL_MODE_DISABLED) != 0)   /* serial: no link port */
         gba_fatal("Not a Game Boy Advance ROM", "The header did not check out");
 
-    /* gba_over.h sets flash_bank_cnt=128KB for games like Pokemon, but
-     * detect_backup_subcircuit() may still set backup_type_reset=EEPROM if it
-     * finds an EEPROM_V string in the ROM. Force consistency: if the override
-     * table requested 128KB flash, honour that over the signature scan. */
-    /* Force Flash 128KB unconditionally for now — will scope this to
-     * specific games once save is confirmed working. */
     extern void gba_force_flash128_backup(void);
-    gba_force_flash128_backup();
+    extern unsigned int gba_get_flash_bank_cnt(void);
+    /* Flash 128KB guard: gba_over.h may have set flash_bank_cnt=128KB but
+     * detect_backup_subcircuit() might have overridden backup_type_reset to
+     * EEPROM. Also, during gameplay a DMA to 0x0D resets backup_type to
+     * EEPROM (write_eeprom() fires). We track this as a per-session flag and
+     * re-enforce every frame so Flash writes are never silently discarded. */
+    gba_is_flash128 = (gba_get_flash_bank_cnt() == 2u); /* FLASH_SIZE_128KB */
+    if (gba_is_flash128)
+        gba_force_flash128_backup();
 
     /* After load_gamepak, on purpose: it is what sets idle_loop_target_pc from
      * gpSP's own gba_over.h, and ours has to win. A game with no busy-wait PC
@@ -723,6 +726,14 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         execute_arm(execute_cycles);
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
+
+        /* Pokemon and other Flash-128KB games may DMA to 0x0D000000 during
+         * serial/link-cable init, which triggers write_eeprom() and silently
+         * changes backup_type to BACKUP_EEPROM. This discards all subsequent
+         * Flash writes. Re-enforce Flash every frame to prevent that.
+         * Only applied when we explicitly requested Flash 128KB via gba_over.h. */
+        if (gba_is_flash128)
+            gba_force_flash128_backup();
 
         /* Blit only when LCD has finished the previous swap — if still
          * pending, skip this display update (frame drop) but keep emulating.
