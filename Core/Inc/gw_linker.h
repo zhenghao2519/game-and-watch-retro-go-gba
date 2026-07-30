@@ -113,6 +113,8 @@ extern uint8_t _OVERLAY_GBA_BSS_SIZE;
 extern uint8_t __gba_itc_start__;
 extern uint8_t _OVERLAY_GBA_ITC_LMA_OFFSET;
 extern uint8_t _OVERLAY_GBA_ITC_SIZE;
+extern uint8_t __gba_ahb_start__;
+extern uint8_t __gba_ahb_end__;
 
 extern uint8_t *_NES_ROM_UNPACK_BUFFER;
 extern uint8_t _NES_ROM_UNPACK_BUFFER_SIZE;
