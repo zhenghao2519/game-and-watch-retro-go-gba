@@ -253,26 +253,13 @@ static void gba_show_save_indicator(uint16_t color)
 
 static void gba_SramSave(const char *sramPath)
 {
-    extern unsigned int gba_get_backup_type(void);
-    extern unsigned int gba_get_backup_type_reset(void);
-    unsigned int btype = gba_get_backup_type();
-    unsigned int btype_reset = gba_get_backup_type_reset();
-
-    /* Show backup_type as colour before writing:
-     * BACKUP_UNKN=0 → white, BACKUP_FLASH=1 → green,
-     * BACKUP_EEPROM=3 → red, BACKUP_SRAM=2 → blue, other → yellow */
-    uint16_t type_color = (btype == 1) ? 0x07E0 :  /* FLASH  → green */
-                          (btype == 3) ? 0xF800 :  /* EEPROM → red   */
-                          (btype == 2) ? 0x001F :  /* SRAM   → blue  */
-                          (btype == 0) ? 0xFFFF :  /* UNKN   → white */
-                                         0xFFE0;   /* other  → yellow */
-    gba_show_save_indicator(type_color);
-    (void)btype_reset;
-
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
         fs_write(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
+        gba_show_save_indicator(0x07E0); /* green = OK */
+    } else {
+        gba_show_save_indicator(0xF800); /* red = failed */
     }
 }
 
@@ -282,17 +269,6 @@ static void gba_SramLoad(const char *sramPath)
     if (file) {
         fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
-        /* Check if loaded data is non-empty (not all 0xFF) */
-        int has_data = 0;
-        for (int i = 0; i < 256; i++) {
-            if (gba_get_backup_ptr()[i] != 0xFF) { has_data = 1; break; }
-        }
-        if (has_data)
-            gba_show_save_indicator(0x001F); /* blue = load OK, has real data */
-        else
-            gba_show_save_indicator(0x07FF); /* cyan = load OK but data is all 0xFF */
-    } else {
-        gba_show_save_indicator(0xFFE0); /* yellow = no save file */
     }
 }
 
@@ -741,6 +717,29 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         gba_diag_publish();
 
         gba_pcm_submit();
+
+        /* Auto-save gamepak_backup every ~5s (300 frames at 60fps).
+         * This ensures in-game saves reach flash even if the menu save
+         * path has issues with backup_type timing. Only write if backup
+         * has changed since last save (dirty detection via simple hash). */
+        static uint32_t autosave_frame = 0;
+        static uint32_t last_backup_hash = 0;
+        if (++autosave_frame >= 300) {
+            autosave_frame = 0;
+            uint8_t *bp = gba_get_backup_ptr();
+            uint32_t sz = gba_get_backup_size();
+            /* Fast hash: XOR every 256th byte */
+            uint32_t hash = 0;
+            for (uint32_t i = 0; i < sz; i += 256)
+                hash ^= (uint32_t)bp[i] | ((uint32_t)bp[i] << 8);
+            if (hash != last_backup_hash) {
+                last_backup_hash = hash;
+                char sramPath[FS_MAX_PATH_SIZE];
+                odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
+                fs_file_t *f = fs_open(sramPath, FS_WRITE, FS_RAW);
+                if (f) { fs_write(f, bp, sz); fs_close(f); }
+            }
+        }
 
         common_emu_sound_sync(false);
     }

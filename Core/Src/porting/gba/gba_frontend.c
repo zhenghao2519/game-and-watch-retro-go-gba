@@ -211,8 +211,6 @@ extern unsigned char gamepak_backup[];
 
 unsigned char *gba_get_backup_ptr(void) { return gamepak_backup; }
 unsigned int gba_get_backup_size(void) { return 128 * 1024; }
-unsigned int gba_get_backup_type(void) { return backup_type; }
-unsigned int gba_get_backup_type_reset(void) { return backup_type_reset; }
 
 /* Force Flash 128KB backup type after load_gamepak() in case ROM signature
  * scanning set the wrong type. backup_type and backup_type_reset must both
