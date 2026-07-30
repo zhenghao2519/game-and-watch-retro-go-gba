@@ -602,6 +602,15 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     gba_load_bios();
     memset(gba_get_backup_ptr(), 0xFF, gba_get_backup_size());
 
+    /* Debug: verify accessor points to the same memory gpSP uses */
+    extern void gba_debug_mark_backup(void);
+    gba_debug_mark_backup();
+    uint8_t *bp = gba_get_backup_ptr();
+    if (bp[0] == 0xDE && bp[1] == 0xAD && bp[2] == 0xBE && bp[3] == 0xEF)
+        gba_show_save_indicator(0x07E0); /* green = same memory */
+    else
+        gba_show_save_indicator(0xF800); /* red = DIFFERENT memory! */
+
     /* The ROM lives in external flash, baked in at compile time by parse_roms.py.
      * It is memory-mapped via QSPI — no decompression, no copy, no SD needed.
      * ACTIVE_FILE->address points directly into the EXTFLASH address space. */
