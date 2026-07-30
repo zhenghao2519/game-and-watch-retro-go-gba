@@ -735,6 +735,7 @@ Core/Src/porting/amstrad/amstrad_catalog.c \
 Core/Src/porting/amstrad/amstrad_format.c \
 Core/Src/porting/amstrad/amstrad_loader.c \
 Core/Src/porting/amstrad/amstrad_video8bpp.c
+endif
 
 ######################################
 # GBA (gpSP)
