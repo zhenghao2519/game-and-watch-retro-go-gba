@@ -277,7 +277,8 @@ static void gba_SramLoad(const char *sramPath)
     if (file) {
         fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
-        gba_force_flash128_backup();
+        extern void gba_force_sram_backup(void);
+        gba_force_sram_backup();
 
         /* Visual check: scan entire backup for non-0xFF data */
         uint8_t *bp = gba_get_backup_ptr();
@@ -730,13 +731,16 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
         gba_input_read(&joystick);
 
-        /* Force backup_type=FLASH BEFORE execute_arm() so that any Flash
-         * write the game makes this frame lands in gamepak_backup.
-         * Must be before, not after: write_eeprom() (triggered by a DMA to
-         * 0x0D) and write_backup() (Flash program) can both fire within one
-         * execute_arm() call. If we force only after, the write is already lost. */
+        /* Force backup_type=SRAM before every execute_arm(). In SRAM mode
+         * write_backup() stores bytes directly without Flash command sequence.
+         * This bypasses the Flash protocol entirely — if Pokemon writes its
+         * save data to 0x0E000000, it lands in gamepak_backup regardless of
+         * the command sequence state. The data may not be in Flash format but
+         * on reload we force SRAM again so the game reads it back the same way.
+         * Diagnostic: if saves work now, the Flash command parsing was broken. */
+        extern void gba_force_sram_backup(void);
         if (gba_is_flash128)
-            gba_force_flash128_backup();
+            gba_force_sram_backup();
 
         common_emu_clear_dwt_cycles();
         execute_arm(execute_cycles);
