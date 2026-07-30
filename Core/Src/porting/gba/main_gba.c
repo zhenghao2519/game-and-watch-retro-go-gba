@@ -290,6 +290,10 @@ static bool gba_LoadState(char *savePathName, char *sramPathName, int slot)
     (void)savePathName;
     (void)slot;
     gba_SramLoad(sramPathName);
+    /* Restart the GBA CPU so the game re-reads Flash from scratch.
+     * Without this, the game continues from its current state and
+     * never sees the newly loaded gamepak_backup contents. */
+    reset_gba();
     return true;
 }
 
