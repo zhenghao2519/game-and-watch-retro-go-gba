@@ -202,3 +202,11 @@ int filestream_flush(struct RFILE *stream)
         return -1;
     return fflush(stream->fp);
 }
+
+/* Accessor for main_gba.c to reach gpSP's gamepak_backup without relying on
+ * extern declarations crossing the --redefine-syms boundary correctly.
+ * Both this file and gba_memory.c go through gba_redefines, so the symbol
+ * resolution is guaranteed consistent within this compilation unit. */
+extern unsigned char gamepak_backup[];
+unsigned char *gba_get_backup_ptr(void) { return gamepak_backup; }
+unsigned int gba_get_backup_size(void) { return 128 * 1024; }

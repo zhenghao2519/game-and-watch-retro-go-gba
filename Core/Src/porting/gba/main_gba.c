@@ -23,8 +23,15 @@ extern uint16_t *gba_screen_pixels; /* the core renders straight into this, RGB5
 extern uint32_t  execute_cycles;    /* cycles the core wants to run before the next event */
 extern uint32_t  skip_next_frame;   /* set and the PPU evaluates but does not draw */
 extern uint8_t   bios_rom[16 * 1024];
-extern uint8_t   gamepak_backup[128 * 1024];
 extern const uint8_t open_gba_bios_rom[];
+
+/* Use accessor functions from gba_frontend.c to reach gamepak_backup.
+ * Both gba_frontend.o and gba_memory.o go through --redefine-syms together,
+ * so their symbol resolution is guaranteed consistent. main_gba.o also goes
+ * through redefine, but using a function call eliminates any possible
+ * linker-level mismatch with the BSS array. */
+extern uint8_t *gba_get_backup_ptr(void);
+extern unsigned int gba_get_backup_size(void);
 
 void     init_main(void);
 void     init_memory(void);
@@ -249,12 +256,12 @@ static void gba_SramSave(const char *sramPath)
     /* Check if gamepak_backup has any real data (not all 0xFF) */
     int has_data = 0;
     for (int i = 0; i < 1024; i++) {
-        if (gamepak_backup[i] != 0xFF) { has_data = 1; break; }
+        if (gba_get_backup_ptr()[i] != 0xFF) { has_data = 1; break; }
     }
 
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
-        fs_write(file, gamepak_backup, sizeof(gamepak_backup));
+        fs_write(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
         if (has_data)
             gba_show_save_indicator(0x07E0); /* green = save OK with data */
@@ -269,12 +276,12 @@ static void gba_SramLoad(const char *sramPath)
 {
     fs_file_t *file = fs_open(sramPath, FS_READ, FS_RAW);
     if (file) {
-        fs_read(file, gamepak_backup, sizeof(gamepak_backup));
+        fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
         /* Check if loaded data is non-empty (not all 0xFF) */
         int has_data = 0;
         for (int i = 0; i < 256; i++) {
-            if (gamepak_backup[i] != 0xFF) { has_data = 1; break; }
+            if (gba_get_backup_ptr()[i] != 0xFF) { has_data = 1; break; }
         }
         if (has_data)
             gba_show_save_indicator(0x001F); /* blue = load OK, has real data */
@@ -593,7 +600,7 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     init_sound();
 
     gba_load_bios();
-    memset(gamepak_backup, 0xFF, sizeof(gamepak_backup));
+    memset(gba_get_backup_ptr(), 0xFF, gba_get_backup_size());
 
     /* The ROM lives in external flash, baked in at compile time by parse_roms.py.
      * It is memory-mapped via QSPI — no decompression, no copy, no SD needed.
