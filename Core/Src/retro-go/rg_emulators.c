@@ -694,7 +694,9 @@ void emulator_start(retro_emulator_file_t *file, bool load_state, bool start_pau
       memcpy(&__RAM_EMU_START__, &_OVERLAY_GBA_LOAD_START, (size_t)&_OVERLAY_GBA_SIZE);
       /* Copy ARM7 interpreter to ITCM */
       memcpy(&__gba_itc_start__, (uint8_t *)&__RAM_EMU_START__ + (uint32_t)&_OVERLAY_GBA_ITC_LMA_OFFSET, (size_t)&_OVERLAY_GBA_ITC_SIZE);
-      __DSB(); __ISB();
+      __DSB();
+      SCB_InvalidateICache(); /* flush stale I-Cache lines from previous GBA session */
+      __ISB();
       memset(&_OVERLAY_GBA_BSS_START, 0x0, (size_t)&_OVERLAY_GBA_BSS_SIZE);
       /* Zero AHB BSS (bios_rom, cheats, sound_buffer) — not covered by overlay memset */
       memset(&__gba_ahb_start__, 0x0, (size_t)(&__gba_ahb_end__ - &__gba_ahb_start__));

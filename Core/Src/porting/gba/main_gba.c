@@ -348,12 +348,12 @@ static inline void screen_blit_nn(int32_t dest_width, int32_t dest_height)
     int w2 = dest_width;
     int h2 = dest_height;
 
-    int y_ratio = (int)((h1 << 16) / h2) + 1;
+    int y_ratio = (int)((h1 << 16) / h2);
     int hpad = (LCD_WIDTH - dest_width) / 2;
     int wpad = (LCD_HEIGHT - dest_height) / 2;
 
     if (nn_xmap_width != dest_width) {
-        int x_ratio = (int)((w1 << 16) / w2) + 1;
+        int x_ratio = (int)((w1 << 16) / w2);
         for (int j = 0; j < w2; j++)
             nn_xmap[j] = (uint16_t)((j * x_ratio) >> 16);
         nn_xmap_width = dest_width;

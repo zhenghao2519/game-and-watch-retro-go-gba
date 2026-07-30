@@ -210,6 +210,12 @@ int filestream_flush(struct RFILE *stream)
 extern unsigned char gamepak_backup[];
 
 unsigned char *gba_get_backup_ptr(void) { return gamepak_backup; }
+
+/* Return actual size based on detected type.
+ * SRAM=32KB, Flash-64KB=64KB, Flash-128KB=128KB, EEPROM=8KB.
+ * Always save/load the full 128KB array to keep things simple and
+ * avoid partial-read corruption of upper banks — this is safe since
+ * gamepak_backup is always 128KB and initialised to 0xFF. */
 unsigned int gba_get_backup_size(void) { return 128 * 1024; }
 
 /* Force Flash 128KB backup type after load_gamepak() in case ROM signature
