@@ -264,8 +264,14 @@ static void gba_SramSave(const char *sramPath)
     if (file) {
         fs_write(file, bp, sz);
         fs_close(file);
-        /* green=OK with data, magenta=wrote 128KB of 0xFF (game never saved) */
-        gba_show_save_indicator(has_data ? 0x07E0 : 0xF81F);
+        if (has_data)
+            gba_show_save_indicator(0x07E0);  /* green = data written */
+        else {
+            /* No data — check if sentinel was ever overwritten */
+            /* orange=sentinel overwritten (execute_arm writes to gamepak_backup)
+             * magenta=sentinel intact (execute_arm never touches it) */
+            gba_show_save_indicator(sentinel_overwritten ? 0xFC00 : 0xF81F);
+        }
     } else {
         gba_show_save_indicator(0xF800); /* red = fs_open failed */
     }
@@ -543,6 +549,7 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 {
     odroid_gamepad_state_t joystick;
     bool gba_is_flash128 = false;
+    bool sentinel_overwritten = false;
     /* Read-only (enabled = -1): the frame budget is 16.67ms, and these two say who
      * is spending it. If Emulate dominates, the answer is clock and the interpreter.
      * If Draw does, the answer is the renderer and where its code lives. */
@@ -742,10 +749,18 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         if (gba_is_flash128)
             gba_force_sram_backup();
 
+        /* Diagnostic: write sentinel to gamepak_backup[0] before execute_arm,
+         * check after. If it changes, execute_arm is overwriting the backup. */
+        gba_get_backup_ptr()[0] = 0xAB;
+
         common_emu_clear_dwt_cycles();
         execute_arm(execute_cycles);
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
+
+        /* Check if execute_arm overwrote our sentinel */
+        if (gba_get_backup_ptr()[0] != 0xAB)
+            sentinel_overwritten = true;
 
         /* Blit only when LCD has finished the previous swap — if still
          * pending, skip this display update (frame drop) but keep emulating.
