@@ -539,9 +539,6 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     video_frame.buffer = gba_framebuffer;
     gba_screen_pixels = gba_framebuffer;
 
-    printf("gba: framebuffer=%p, gba_screen_pixels=%p\n",
-           (void *)gba_framebuffer, (void *)gba_screen_pixels);
-
     odroid_system_init(APPID_GBA, GBA_SAMPLE_RATE);
     odroid_system_emu_init(&gba_LoadState, &gba_SaveState, NULL);
 
@@ -667,16 +664,9 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         wdog_refresh();
 
         bool drawFrame = common_emu_frame_loop();
-        skip_next_frame = drawFrame ? 0 : 1;
-
-        static int dbg_cnt = 0;
-        if (++dbg_cnt == 60) {
-            dbg_cnt = 0;
-            printf("gba: draw=%d skip=%d pixels=%p buf=%p [0]=%04x\n",
-                   drawFrame, skip_next_frame,
-                   (void *)gba_screen_pixels, (void *)video_frame.buffer,
-                   gba_framebuffer ? gba_framebuffer[0] : 0xDEAD);
-        }
+        /* GBA at ~47fps can't hit 60fps target; forcing draw every frame
+         * ensures the screen updates instead of perpetually skipping. */
+        skip_next_frame = 0;
 
         odroid_input_read_gamepad(&joystick);
         common_emu_input_loop(&joystick, options, &blit);
