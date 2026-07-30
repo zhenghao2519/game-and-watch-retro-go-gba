@@ -31,6 +31,7 @@ retro_emulator_file_t *ACTIVE_FILE = NULL;
 #include "videopac_roms.c"
 #include "homebrew_roms.c"
 #include "tama_roms.c"
+#include "gba_roms.c"
 
 const rom_system_t *systems[] = {
     &nes_system,
@@ -54,6 +55,7 @@ const rom_system_t *systems[] = {
     &videopac_system,
     &homebrew_system,
     &tama_system,
+    &gba_system,
 };
 
 const rom_manager_t rom_mgr = {
