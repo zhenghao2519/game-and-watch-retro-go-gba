@@ -15,6 +15,7 @@
  * that collide with CMSIS, so we declare the handful of entry points we use. */
 #include "gba_idle_loop.h"
 #include "gba_audio_filter.h"
+#include "gba_savestate_abi.h"
 
 extern void odroid_system_get_sram_path(char *path, size_t size, int slot);
 extern uint32_t  idle_loop_target_pc; /* gpSP's; gba_frontend.c owns the storage */
