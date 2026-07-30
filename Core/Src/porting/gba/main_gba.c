@@ -665,8 +665,8 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         wdog_refresh();
 
         bool drawFrame = common_emu_frame_loop();
-        /* GBA at ~47fps can't hit 60fps target; forcing draw every frame
-         * ensures the screen updates instead of perpetually skipping. */
+        /* Always render — gpSP must produce every frame for correct timing.
+         * Display update is gated by whether the LCD is ready (non-blocking). */
         skip_next_frame = 0;
 
         odroid_input_read_gamepad(&joystick);
@@ -675,15 +675,19 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
         gba_input_read(&joystick);
 
-        /* execute_arm() returns when the frame driver says the frame is done — and it
-         * has drawn the picture along the way, unless skip_next_frame said not to. */
         common_emu_clear_dwt_cycles();
         execute_arm(execute_cycles);
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
 
-        blit();
-        lcd_swap();
+        /* Blit only when LCD has finished the previous swap — if still
+         * pending, skip this display update (frame drop) but keep emulating.
+         * This avoids blocking on lcd_sleep_while_swap_pending() inside blit()
+         * and gives the CPU back to the emulator sooner. */
+        if (!lcd_is_swap_pending()) {
+            blit();
+            lcd_swap();
+        }
         gba_diag_publish();
 
         gba_pcm_submit();
