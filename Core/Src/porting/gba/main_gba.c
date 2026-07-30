@@ -9,12 +9,14 @@
 #include "gw_malloc.h"
 #include "appid.h"
 #include "bilinear.h"
+#include "filesystem.h"
 
 /* gpsp. The core's own headers pull in libretro types and register-name macros
  * that collide with CMSIS, so we declare the handful of entry points we use. */
 #include "gba_idle_loop.h"
 #include "gba_audio_filter.h"
 
+extern void odroid_system_get_sram_path(char *path, size_t size, int slot);
 extern uint32_t  idle_loop_target_pc; /* gpSP's; gba_frontend.c owns the storage */
 extern uint32_t  idle_loop_cond;      /* 0 = always burn; 1 = only while the branch loops */
 extern uint16_t *gba_screen_pixels; /* the core renders straight into this, RGB565 */
@@ -232,45 +234,40 @@ static void gba_load_bios(void)
 }
 
 /* ------------------------------------------------------------------- SRAM --- */
-/* The cart's own save — the one the game writes when you save in-game. This is
- * what a Pokemon player actually cares about; a savestate is a convenience on
- * top of it.
- *
- * In the flash-only build, saves go directly to ext flash via store_save(),
- * the same mechanism used by GB, NES, and Genesis in this repo. */
-static void gba_SramSave(void)
+/* The cart's own save — the one the game writes when you save in-game.
+ * On filesystem_wip, saves go through the fs_open/fs_write filesystem layer. */
+static void gba_SramSave(const char *sramPath)
 {
-    if (ACTIVE_FILE->save_address && ACTIVE_FILE->save_size >= sizeof(gamepak_backup)) {
-        store_save(ACTIVE_FILE->save_address, gamepak_backup, sizeof(gamepak_backup));
+    fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
+    if (file) {
+        fs_write(file, gamepak_backup, sizeof(gamepak_backup));
+        fs_close(file);
     }
 }
 
-static void gba_SramLoad(void)
+static void gba_SramLoad(const char *sramPath)
 {
-    if (ACTIVE_FILE->save_address && ACTIVE_FILE->save_size >= sizeof(gamepak_backup)) {
-        memcpy(gamepak_backup, ACTIVE_FILE->save_address, sizeof(gamepak_backup));
+    fs_file_t *file = fs_open(sramPath, FS_READ, FS_RAW);
+    if (file) {
+        fs_read(file, gamepak_backup, sizeof(gamepak_backup));
+        fs_close(file);
     }
 }
 
 /* -------------------------------------------------------------- savestate --- */
-/* Full savestates (416KB) are not feasible in the flash-only build: the state
- * exceeds both available RAM staging and typical save_size budgets. Instead,
- * the "save state" button saves the cart's SRAM — the in-game save that a
- * Pokemon player actually cares about. This is the same data gba_SramSave()
- * writes, triggered here so that the common_emu_input_loop's PAUSE+A gesture
- * persists SRAM to flash without needing a separate hook. */
-
-static bool gba_SaveState(char *pathName)
+static bool gba_SaveState(char *savePathName, char *sramPathName, int slot)
 {
-    (void)pathName;
-    gba_SramSave();
+    (void)savePathName;
+    (void)slot;
+    gba_SramSave(sramPathName);
     return true;
 }
 
-static bool gba_LoadState(char *pathName)
+static bool gba_LoadState(char *savePathName, char *sramPathName, int slot)
 {
-    (void)pathName;
-    gba_SramLoad();
+    (void)savePathName;
+    (void)slot;
+    gba_SramLoad(sramPathName);
     return true;
 }
 
@@ -636,7 +633,11 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         }
     }
 
-    gba_SramLoad();
+    {
+        char sramPath[FS_MAX_PATH_SIZE];
+        odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
+        gba_SramLoad(sramPath);
+    }
     reset_gba();
 
 #if CHEAT_CODES == 1
