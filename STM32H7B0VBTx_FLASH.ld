@@ -146,9 +146,6 @@ MEMORY
   CACHEFLASH (xr ) : ORIGIN = __CACHEFLASH_START__,  LENGTH = __CACHEFLASH_LENGTH__
   FILESYSTEM (xr ) : ORIGIN = __FILESYSTEM_START__, LENGTH = __FILESYSTEM_LENGTH__
 
-  /* GBA: cold code + rodata executed directly from ext flash (XIP). Linked at a
-   * fixed ext flash address; no runtime relocation needed. */
-  GBA_CODE   (x) : ORIGIN = 0x90800000,   LENGTH = 512K
 }
 
 
@@ -709,8 +706,9 @@ SECTIONS
     _OVERLAY_GBA_LOAD_END = .;
   } AT> EXTFLASH
 
-  /* Cold code: executed directly from ext flash via QSPI XIP.
-   * No sentinel relocation needed — linker assigns final VMA. */
+  /* Cold code: executed directly from ext flash via QSPI memory-mapped XIP.
+   * VMA = LMA (both in EXTFLASH region) so the CPU fetches instructions
+   * directly from the flash address where the linker places them. */
   .xip_gba : {
     . = ALIGN(8);
     __xip_gba_start__ = .;
@@ -726,7 +724,7 @@ SECTIONS
       /* M4A mixer transliterations — ~102KB, one variant per game per frame */
       build/gba/m4a_hle.o (.text .text*)
     . = ALIGN(4);
-  } > GBA_CODE AT> EXTFLASH
+  } > EXTFLASH
 
   /* All remaining rodata: BIOS image, override tables, renderer/sound tables */
   .rodata_gba : {
@@ -735,7 +733,7 @@ SECTIONS
       build/gba/*.o (.rodata .rodata*)
     . = ALIGN(4);
     __rodata_gba_end__ = .;
-  } > GBA_CODE AT> EXTFLASH
+  } > EXTFLASH
 
   _OVERLAY_GBA_LOAD_START = LOADADDR(.overlay_gba);
   _OVERLAY_GBA_SIZE = SIZEOF(.overlay_gba);
