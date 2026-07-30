@@ -218,8 +218,9 @@ unsigned int gba_get_backup_size(void) { return 128 * 1024; }
 extern unsigned int backup_type;
 extern unsigned int backup_type_reset;
 
-#define BACKUP_FLASH     2u   /* must match gba_memory.c */
-#define FLASH_SIZE_128KB 1u
+/* Values from gba_memory.h */
+#define BACKUP_FLASH     1u
+#define FLASH_SIZE_128KB 2u
 
 extern unsigned int flash_bank_cnt;
 extern unsigned int flash_device_id;
@@ -232,4 +233,6 @@ void gba_force_flash128_backup(void)
     flash_bank_cnt    = FLASH_SIZE_128KB;
     flash_device_id   = FLASH_DEVICE_SANYO_128KB;
 }
+
+unsigned int gba_get_flash_bank_cnt(void) { return flash_bank_cnt; }
 

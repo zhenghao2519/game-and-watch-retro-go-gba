@@ -638,8 +638,8 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
      * finds an EEPROM_V string in the ROM. Force consistency: if the override
      * table requested 128KB flash, honour that over the signature scan. */
     extern void gba_force_flash128_backup(void);
-    extern unsigned int flash_bank_cnt;
-    if (flash_bank_cnt == 1u) /* FLASH_SIZE_128KB */
+    extern unsigned int gba_get_flash_bank_cnt(void);
+    if (gba_get_flash_bank_cnt() == 2u) /* FLASH_SIZE_128KB */
         gba_force_flash128_backup();
 
     /* After load_gamepak, on purpose: it is what sets idle_loop_target_pc from
