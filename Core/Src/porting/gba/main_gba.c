@@ -730,18 +730,18 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
         gba_input_read(&joystick);
 
+        /* Force backup_type=FLASH BEFORE execute_arm() so that any Flash
+         * write the game makes this frame lands in gamepak_backup.
+         * Must be before, not after: write_eeprom() (triggered by a DMA to
+         * 0x0D) and write_backup() (Flash program) can both fire within one
+         * execute_arm() call. If we force only after, the write is already lost. */
+        if (gba_is_flash128)
+            gba_force_flash128_backup();
+
         common_emu_clear_dwt_cycles();
         execute_arm(execute_cycles);
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
-
-        /* Pokemon and other Flash-128KB games may DMA to 0x0D000000 during
-         * serial/link-cable init, which triggers write_eeprom() and silently
-         * changes backup_type to BACKUP_EEPROM. This discards all subsequent
-         * Flash writes. Re-enforce Flash every frame to prevent that.
-         * Only applied when we explicitly requested Flash 128KB via gba_over.h. */
-        if (gba_is_flash128)
-            gba_force_flash128_backup();
 
         /* Blit only when LCD has finished the previous swap — if still
          * pending, skip this display update (frame drop) but keep emulating.
