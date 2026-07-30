@@ -633,12 +633,13 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         }
     }
 
+    reset_gba();
+
     {
         char sramPath[FS_MAX_PATH_SIZE];
         odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
         gba_SramLoad(sramPath);
     }
-    reset_gba();
 
 #if CHEAT_CODES == 1
     /* After reset: parsing a code installs the hook the engine watches for, and a
