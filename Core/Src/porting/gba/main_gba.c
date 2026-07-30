@@ -681,15 +681,8 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
 
-        if (drawFrame) {
-            /* No outer timer around blit(): blit() clears the DWT counter itself, and
-             * an outer read would then only see whatever came after the last inner
-             * clear. That is what made "Draw" report 0.22 ms — exactly the overlay's
-             * number — while Scale alone was 1.99 ms. A measurement that quietly
-             * measures something else is worse than none. */
-            blit();
-            lcd_swap();
-        }
+        blit();
+        lcd_swap();
         gba_diag_publish();
 
         gba_pcm_submit();
