@@ -1658,7 +1658,11 @@ class ROMParser:
         build_config += "#define ENABLE_EMULATOR_GBA\n" if rom_size > 0 else ""
 
         total_size = total_rom_size + total_img_size
-        #total_size +=sega_larger_rom_size
+        # CACHEFLASH is only needed when Sega ROMs (SMS/GG/MD) are stored
+        # LZMA-compressed and need runtime decompression into ext flash.
+        # Currently these systems' generate_system calls don't pass the
+        # `compress` param, so ROMs are always stored raw (XIP direct read)
+        # and CACHEFLASH is unnecessary. Zero it out to avoid wasting flash.
         sega_larger_rom_size = 0
 
         if total_size == 0:
