@@ -212,3 +212,24 @@ extern unsigned char gamepak_backup[];
 unsigned char *gba_get_backup_ptr(void) { return gamepak_backup; }
 unsigned int gba_get_backup_size(void) { return 128 * 1024; }
 
+/* Force Flash 128KB backup type after load_gamepak() in case ROM signature
+ * scanning set the wrong type. backup_type and backup_type_reset must both
+ * be set so that reset_gba() doesn't revert to the wrong value. */
+extern unsigned int backup_type;
+extern unsigned int backup_type_reset;
+
+#define BACKUP_FLASH     2u   /* must match gba_memory.c */
+#define FLASH_SIZE_128KB 1u
+
+extern unsigned int flash_bank_cnt;
+extern unsigned int flash_device_id;
+#define FLASH_DEVICE_SANYO_128KB 0x1362u
+
+void gba_force_flash128_backup(void)
+{
+    backup_type       = BACKUP_FLASH;
+    backup_type_reset = BACKUP_FLASH;
+    flash_bank_cnt    = FLASH_SIZE_128KB;
+    flash_device_id   = FLASH_DEVICE_SANYO_128KB;
+}
+

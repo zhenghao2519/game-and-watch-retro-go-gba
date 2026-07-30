@@ -633,6 +633,15 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
                      SERIAL_MODE_DISABLED) != 0)   /* serial: no link port */
         gba_fatal("Not a Game Boy Advance ROM", "The header did not check out");
 
+    /* gba_over.h sets flash_bank_cnt=128KB for games like Pokemon, but
+     * detect_backup_subcircuit() may still set backup_type_reset=EEPROM if it
+     * finds an EEPROM_V string in the ROM. Force consistency: if the override
+     * table requested 128KB flash, honour that over the signature scan. */
+    extern void gba_force_flash128_backup(void);
+    extern unsigned int flash_bank_cnt;
+    if (flash_bank_cnt == 1u) /* FLASH_SIZE_128KB */
+        gba_force_flash128_backup();
+
     /* After load_gamepak, on purpose: it is what sets idle_loop_target_pc from
      * gpSP's own gba_over.h, and ours has to win. A game with no busy-wait PC
      * spins through the whole 280,896-cycle frame instead of doing ~75,000 cycles
