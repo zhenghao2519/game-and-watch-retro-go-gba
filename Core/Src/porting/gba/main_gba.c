@@ -241,51 +241,91 @@ static void gba_load_bios(void)
 }
 
 /* ------------------------------------------------------------------- SRAM --- */
-/* The cart's own save — the one the game writes when you save in-game.
- * On filesystem_wip, saves go through the fs_open/fs_write filesystem layer. */
-static void gba_show_save_indicator(uint16_t color)
-{
-    uint16_t *dest = lcd_get_active_buffer();
-    for (int i = 0; i < LCD_WIDTH * 2; i++)
-        dest[i] = color;
-    lcd_swap();
-}
+/* ----------------------------------------------------------- full savestate ---
+ * Save the complete gpSP state: CPU, DMA, timers, PPU, audio, and the six
+ * bulk memory regions (iwram/ewram/vram/oam/palette/ioregs ~390KB).
+ *
+ * The bulk buffers are too large to stage in RAM, so they go straight to
+ * littlefs. Only the slim bson document (~4KB) is buffered in the inactive
+ * LCD buffer which is free during a paused save. Order on load matters:
+ * bulk first, then slim — applying slim rebuilds palette caches from the
+ * palette_ram we just restored, not from stale data. */
+#define GBA_STATE_MAGIC  0x41425347u  /* 'GBAS' */
+#define GBA_STATE_VER    1
 
-static void gba_SramSave(const char *sramPath)
-{
-    fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
-    if (file) {
-        fs_write(file, gba_get_backup_ptr(), gba_get_backup_size());
-        fs_close(file);
-        gba_show_save_indicator(0x07E0); /* green = saved */
-    } else {
-        gba_show_save_indicator(0xF800); /* red = failed */
-    }
-}
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t slim_len;
+    uint32_t bulk_len;
+} gba_state_hdr_t;
 
-static void gba_SramLoad(const char *sramPath)
-{
-    fs_file_t *file = fs_open(sramPath, FS_READ, FS_RAW);
-    if (file) {
-        fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
-        fs_close(file);
-    }
-}
-
-/* -------------------------------------------------------------- savestate --- */
 static bool gba_SaveState(char *savePathName, char *sramPathName, int slot)
 {
-    (void)savePathName;
+    (void)sramPathName;
     (void)slot;
-    gba_SramSave(sramPathName);
-    return true;
+
+    unsigned nreg = 0;
+    const gba_bulk_region_t *rg = gba_bulk_regions(&nreg);
+    uint8_t *slim = (uint8_t *)lcd_get_active_buffer();
+
+    gba_save_state_slim(slim);
+
+    uint32_t slim_len = *(uint32_t *)slim;
+    uint32_t bulk_len = 0;
+    for (unsigned i = 0; i < nreg; i++)
+        bulk_len += rg[i].len;
+
+    fs_file_t *f = fs_open(savePathName, FS_WRITE, FS_RAW);
+    if (!f) return false;
+
+    gba_state_hdr_t h = {GBA_STATE_MAGIC, GBA_STATE_VER, slim_len, bulk_len};
+    bool ok = (fs_write(f, (unsigned char *)&h, sizeof(h)) == (int)sizeof(h)) &&
+              (fs_write(f, slim, slim_len) == (int)slim_len);
+    for (unsigned i = 0; ok && i < nreg; i++)
+        ok = (fs_write(f, rg[i].ptr, rg[i].len) == (int)rg[i].len);
+
+    fs_close(f);
+    lcd_clear_active_buffer();
+    return ok;
 }
 
 static bool gba_LoadState(char *savePathName, char *sramPathName, int slot)
 {
-    (void)savePathName;
+    (void)sramPathName;
     (void)slot;
-    gba_SramLoad(sramPathName);
+
+    unsigned nreg = 0;
+    const gba_bulk_region_t *rg = gba_bulk_regions(&nreg);
+
+    fs_file_t *f = fs_open(savePathName, FS_READ, FS_RAW);
+    if (!f) return false;
+
+    gba_state_hdr_t h;
+    if (fs_read(f, (unsigned char *)&h, sizeof(h)) != (int)sizeof(h) ||
+        h.magic != GBA_STATE_MAGIC || h.version != GBA_STATE_VER ||
+        h.slim_len == 0 || h.slim_len > GBA_STATE_SLIM_SIZE) {
+        fs_close(f);
+        return false;
+    }
+
+    uint32_t bulk_len = 0;
+    for (unsigned i = 0; i < nreg; i++)
+        bulk_len += rg[i].len;
+    if (h.bulk_len != bulk_len) { fs_close(f); return false; }
+
+    uint8_t *slim = (uint8_t *)lcd_get_active_buffer();
+    bool ok = (fs_read(f, slim, h.slim_len) == (int)h.slim_len);
+    for (unsigned i = 0; ok && i < nreg; i++)
+        ok = (fs_read(f, rg[i].ptr, rg[i].len) == (int)rg[i].len);
+    fs_close(f);
+
+    if (!ok) return false;
+
+    /* bulk before slim: slim rebuild palette caches from restored palette_ram */
+    if (!gba_load_state_slim(slim)) return false;
+
+    lcd_clear_active_buffer();
     return true;
 }
 
@@ -522,7 +562,6 @@ static void gba_input_read(odroid_gamepad_state_t *joystick)
 void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 {
     odroid_gamepad_state_t joystick;
-    bool gba_is_flash128 = false;
     /* Read-only (enabled = -1): the frame budget is 16.67ms, and these two say who
      * is spending it. If Emulate dominates, the answer is clock and the interpreter.
      * If Draw does, the answer is the renderer and where its code lives. */
@@ -613,14 +652,9 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         gba_fatal("Not a Game Boy Advance ROM", "The header did not check out");
 
     extern void gba_force_flash128_backup(void);
-    extern unsigned int gba_get_flash_bank_cnt(void);
-    /* Unconditionally force Flash 128KB — covers Pokemon and any other game
-     * that gba_over.h maps to Flash. Also handles the case where game_code
-     * reads as "UNKN" (bad XIP mapping) so flash_bank_cnt stays at 64KB.
-     * For EEPROM/SRAM games this sets backup_type=FLASH which is wrong, but
-     * since this is a flash-only device with no link cable or EEPROM hardware,
-     * those games will use gamepak_backup as generic SRAM storage — acceptable. */
-    gba_is_flash128 = true;
+    /* Force Flash 128KB backup type after load_gamepak() so that gamepak_backup
+     * is initialised correctly for the savestate ABI (gba_bulk_regions includes
+     * it indirectly via the memory map). */
     gba_force_flash128_backup();
 
     /* After load_gamepak, on purpose: it is what sets idle_loop_target_pc from
@@ -681,17 +715,9 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     }
 #endif
 
-    /* Load SRAM save AFTER all core initialization is complete.
-     * Always attempt to load — either via the system load_state path
-     * (resume from sleep) or our direct path (fresh game start).
-     * This must be the very last thing before the frame loop so that
-     * nothing else can reset gamepak_backup or flash controller state. */
     if (load_state) {
         odroid_system_emu_load_state(save_slot);
     } else {
-        char sramPath[FS_MAX_PATH_SIZE];
-        odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
-        gba_SramLoad(sramPath);
         lcd_clear_buffers();
     }
 
@@ -711,14 +737,6 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
         gba_input_read(&joystick);
 
-        /* Re-enforce Flash 128KB BEFORE execute_arm() each frame.
-         * A DMA write to 0x0D000000 (link-cable init) within execute_arm()
-         * triggers write_eeprom() which sets backup_type=EEPROM, discarding
-         * all Flash writes in that same call. Forcing before the call ensures
-         * backup_type=FLASH at the start of every frame. */
-        if (gba_is_flash128)
-            gba_force_flash128_backup();
-
         common_emu_clear_dwt_cycles();
         execute_arm(execute_cycles);
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
@@ -735,26 +753,6 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         gba_diag_publish();
 
         gba_pcm_submit();
-
-        /* Auto-save gamepak_backup every ~5s (300 frames).
-         * Samples every 128th byte for a simple dirty check. */
-        static uint32_t autosave_frame = 0;
-        static uint32_t last_backup_hash = 0xFFFFFFFF;
-        if (++autosave_frame >= 300) {
-            autosave_frame = 0;
-            uint8_t *bp = gba_get_backup_ptr();
-            uint32_t sz = gba_get_backup_size();
-            uint32_t hash = 0;
-            for (uint32_t i = 0; i + 1 < sz; i += 128)
-                hash ^= ((uint32_t)bp[i]) | ((uint32_t)bp[i + 1] << 8);
-            if (hash != last_backup_hash) {
-                last_backup_hash = hash;
-                char sramPath[FS_MAX_PATH_SIZE];
-                odroid_system_get_sram_path(sramPath, sizeof(sramPath), save_slot);
-                fs_file_t *f = fs_open(sramPath, FS_WRITE, FS_RAW);
-                if (f) { fs_write(f, bp, sz); fs_close(f); }
-            }
-        }
 
         common_emu_sound_sync(false);
     }
