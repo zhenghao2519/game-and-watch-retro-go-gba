@@ -657,16 +657,7 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
     reset_gba();
 
-    {
-        char sramPath[FS_MAX_PATH_SIZE];
-        odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
-        gba_SramLoad(sramPath);
-    }
-
 #if CHEAT_CODES == 1
-    /* After reset: parsing a code installs the hook the engine watches for, and a
-     * reset would throw it away again. Only the codes the user actually ticked on
-     * for this ROM go in. */
     cheat_clear();
     unsigned slot = 0;
     for (int i = 0; i < ACTIVE_FILE->cheat_count && slot < GBA_MAX_CHEAT_SLOTS; i++) {
@@ -675,9 +666,17 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     }
 #endif
 
+    /* Load SRAM save AFTER all core initialization is complete.
+     * Always attempt to load — either via the system load_state path
+     * (resume from sleep) or our direct path (fresh game start).
+     * This must be the very last thing before the frame loop so that
+     * nothing else can reset gamepak_backup or flash controller state. */
     if (load_state) {
         odroid_system_emu_load_state(save_slot);
     } else {
+        char sramPath[FS_MAX_PATH_SIZE];
+        odroid_system_get_sram_path(sramPath, sizeof(sramPath), 0);
+        gba_SramLoad(sramPath);
         lcd_clear_buffers();
     }
 
