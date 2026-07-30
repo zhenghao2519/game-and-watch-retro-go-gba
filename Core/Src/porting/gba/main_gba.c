@@ -262,7 +262,15 @@ static void gba_SramLoad(const char *sramPath)
     if (file) {
         fs_read(file, gamepak_backup, sizeof(gamepak_backup));
         fs_close(file);
-        gba_show_save_indicator(0x001F); /* blue = load OK */
+        /* Check if loaded data is non-empty (not all 0xFF) */
+        int has_data = 0;
+        for (int i = 0; i < 256; i++) {
+            if (gamepak_backup[i] != 0xFF) { has_data = 1; break; }
+        }
+        if (has_data)
+            gba_show_save_indicator(0x001F); /* blue = load OK, has real data */
+        else
+            gba_show_save_indicator(0x07FF); /* cyan = load OK but data is all 0xFF */
     } else {
         gba_show_save_indicator(0xFFE0); /* yellow = no save file */
     }
