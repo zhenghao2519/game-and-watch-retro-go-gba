@@ -682,9 +682,8 @@ SECTIONS
     . = ALIGN(4);
     _GBA_MAIN_CODE_END = .;
 
-      /* Renderer: keep ALL video.o text in RAM for now.
-       * TODO: once working, split hot/cold paths for ~21KB savings. */
-      build/gba/video.o (.text .text*)
+      /* video.o: all text goes to XIP (ext flash) for now to save RAM.
+       * TODO: once working, profile and bring hot scanline paths back. */
 
       /* All .data from all objects (small, writable) */
       build/gba/*.o (.data .data*)
@@ -725,6 +724,8 @@ SECTIONS
   .xip_gba : {
     . = ALIGN(8);
     __xip_gba_start__ = .;
+      /* Renderer — runs from ext flash XIP for now */
+      build/gba/video.o (.text .text*)
       /* Cold: link cable, GBP, wireless, pad, frontend */
       build/gba/serial.o (.text .text*)
       build/gba/serial_proto.o (.text .text*)
