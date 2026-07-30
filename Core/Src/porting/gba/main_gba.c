@@ -253,10 +253,12 @@ static void gba_show_save_indicator(uint16_t color)
 
 static void gba_SramSave(const char *sramPath)
 {
-    /* Check if gamepak_backup has any real data (not all 0xFF) */
+    /* Check if gamepak_backup has any real data anywhere (not all 0xFF) */
     int has_data = 0;
-    for (int i = 0; i < 1024; i++) {
-        if (gba_get_backup_ptr()[i] != 0xFF) { has_data = 1; break; }
+    uint8_t *bp = gba_get_backup_ptr();
+    unsigned int bsz = gba_get_backup_size();
+    for (unsigned int i = 0; i < bsz; i += 64) {
+        if (bp[i] != 0xFF) { has_data = 1; break; }
     }
 
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
@@ -306,10 +308,6 @@ static bool gba_LoadState(char *savePathName, char *sramPathName, int slot)
     (void)savePathName;
     (void)slot;
     gba_SramLoad(sramPathName);
-    /* Restart the GBA CPU so the game re-reads Flash from scratch.
-     * Without this, the game continues from its current state and
-     * never sees the newly loaded gamepak_backup contents. */
-    reset_gba();
     return true;
 }
 
@@ -601,15 +599,6 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 
     gba_load_bios();
     memset(gba_get_backup_ptr(), 0xFF, gba_get_backup_size());
-
-    /* Debug: verify accessor points to the same memory gpSP uses */
-    extern void gba_debug_mark_backup(void);
-    gba_debug_mark_backup();
-    uint8_t *bp = gba_get_backup_ptr();
-    if (bp[0] == 0xDE && bp[1] == 0xAD && bp[2] == 0xBE && bp[3] == 0xEF)
-        gba_show_save_indicator(0x07E0); /* green = same memory */
-    else
-        gba_show_save_indicator(0xF800); /* red = DIFFERENT memory! */
 
     /* The ROM lives in external flash, baked in at compile time by parse_roms.py.
      * It is memory-mapped via QSPI — no decompression, no copy, no SD needed.

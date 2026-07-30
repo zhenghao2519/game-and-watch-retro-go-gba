@@ -212,11 +212,3 @@ extern unsigned char gamepak_backup[];
 unsigned char *gba_get_backup_ptr(void) { return gamepak_backup; }
 unsigned int gba_get_backup_size(void) { return 128 * 1024; }
 
-/* Debug: write a marker byte to gamepak_backup[0..3] that we can read back
- * from main_gba.c to confirm both sides see the same memory. */
-void gba_debug_mark_backup(void) {
-    gamepak_backup[0] = 0xDE;
-    gamepak_backup[1] = 0xAD;
-    gamepak_backup[2] = 0xBE;
-    gamepak_backup[3] = 0xEF;
-}
