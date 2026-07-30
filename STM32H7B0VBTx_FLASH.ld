@@ -766,10 +766,13 @@ SECTIONS
   }
   _OVERLAY_GBA_BSS_SIZE = SIZEOF(.overlay_gba_bss);
 
-  /* Place this symbol after the last overlay definition */
+  /* Place this symbol after the last overlay definition.
+   * __extflash_end__ uses LOADADDR so the size script sees the real
+   * LMA consumption including GBA XIP sections. */
   .overlay_end : {
-    __extflash_end__ = .;
+    . = ALIGN(4);
   } AT> EXTFLASH
+  __extflash_end__ = LOADADDR(.overlay_end) + SIZEOF(.overlay_end);
 
   ._ram_space_check_md : {
     . = . + SIZEOF(.overlay_md);
