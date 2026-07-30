@@ -253,24 +253,26 @@ static void gba_show_save_indicator(uint16_t color)
 
 static void gba_SramSave(const char *sramPath)
 {
-    /* Check if gamepak_backup has any real data anywhere (not all 0xFF) */
-    int has_data = 0;
-    uint8_t *bp = gba_get_backup_ptr();
-    unsigned int bsz = gba_get_backup_size();
-    for (unsigned int i = 0; i < bsz; i += 64) {
-        if (bp[i] != 0xFF) { has_data = 1; break; }
-    }
+    extern unsigned int gba_get_backup_type(void);
+    extern unsigned int gba_get_backup_type_reset(void);
+    unsigned int btype = gba_get_backup_type();
+    unsigned int btype_reset = gba_get_backup_type_reset();
+
+    /* Show backup_type as colour before writing:
+     * BACKUP_UNKN=0 → white, BACKUP_FLASH=1 → green,
+     * BACKUP_EEPROM=3 → red, BACKUP_SRAM=2 → blue, other → yellow */
+    uint16_t type_color = (btype == 1) ? 0x07E0 :  /* FLASH  → green */
+                          (btype == 3) ? 0xF800 :  /* EEPROM → red   */
+                          (btype == 2) ? 0x001F :  /* SRAM   → blue  */
+                          (btype == 0) ? 0xFFFF :  /* UNKN   → white */
+                                         0xFFE0;   /* other  → yellow */
+    gba_show_save_indicator(type_color);
+    (void)btype_reset;
 
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
         fs_write(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
-        if (has_data)
-            gba_show_save_indicator(0x07E0); /* green = save OK with data */
-        else
-            gba_show_save_indicator(0xF81F); /* magenta = save OK but backup is all 0xFF */
-    } else {
-        gba_show_save_indicator(0xF800); /* red = save FAILED */
     }
 }
 
