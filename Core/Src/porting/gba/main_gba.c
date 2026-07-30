@@ -246,11 +246,20 @@ static void gba_show_save_indicator(uint16_t color)
 
 static void gba_SramSave(const char *sramPath)
 {
+    /* Check if gamepak_backup has any real data (not all 0xFF) */
+    int has_data = 0;
+    for (int i = 0; i < 1024; i++) {
+        if (gamepak_backup[i] != 0xFF) { has_data = 1; break; }
+    }
+
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
         fs_write(file, gamepak_backup, sizeof(gamepak_backup));
         fs_close(file);
-        gba_show_save_indicator(0x07E0); /* green = save OK */
+        if (has_data)
+            gba_show_save_indicator(0x07E0); /* green = save OK with data */
+        else
+            gba_show_save_indicator(0xF81F); /* magenta = save OK but backup is all 0xFF */
     } else {
         gba_show_save_indicator(0xF800); /* red = save FAILED */
     }
