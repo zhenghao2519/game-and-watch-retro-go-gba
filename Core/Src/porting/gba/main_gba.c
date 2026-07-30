@@ -637,10 +637,10 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
      * detect_backup_subcircuit() may still set backup_type_reset=EEPROM if it
      * finds an EEPROM_V string in the ROM. Force consistency: if the override
      * table requested 128KB flash, honour that over the signature scan. */
+    /* Force Flash 128KB unconditionally for now — will scope this to
+     * specific games once save is confirmed working. */
     extern void gba_force_flash128_backup(void);
-    extern unsigned int gba_get_flash_bank_cnt(void);
-    if (gba_get_flash_bank_cnt() == 2u) /* FLASH_SIZE_128KB */
-        gba_force_flash128_backup();
+    gba_force_flash128_backup();
 
     /* After load_gamepak, on purpose: it is what sets idle_loop_target_pc from
      * gpSP's own gba_over.h, and ours has to win. A game with no busy-wait PC
