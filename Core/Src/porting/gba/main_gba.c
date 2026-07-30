@@ -269,9 +269,17 @@ static void gba_SramLoad(const char *sramPath)
     if (file) {
         fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
-        /* Re-force Flash type after loading so the game can read the data.
-         * Without this, if backup_type=EEPROM, read_backup() returns 0xFF. */
         gba_force_flash128_backup();
+
+        /* Visual check: scan entire backup for non-0xFF data */
+        uint8_t *bp = gba_get_backup_ptr();
+        int found = 0;
+        for (unsigned i = 0; i < gba_get_backup_size(); i++) {
+            if (bp[i] != 0xFF) { found = 1; break; }
+        }
+        gba_show_save_indicator(found ? 0x001F : 0xF81F); /* blue=has data, magenta=all 0xFF */
+    } else {
+        gba_show_save_indicator(0xFFE0); /* yellow=no file */
     }
 }
 
