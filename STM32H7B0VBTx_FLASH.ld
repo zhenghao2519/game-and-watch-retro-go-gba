@@ -682,12 +682,9 @@ SECTIONS
     . = ALIGN(4);
     _GBA_MAIN_CODE_END = .;
 
-      /* Hot renderer: tile scanline renderers + sprite + blend + dispatch */
-      build/gba/video.o (.text._Z20render_scanline_text*)
-      build/gba/video.o (.text._Z13render_object*)
-      build/gba/video.o (.text._ZL16render_w_effects*)
-      build/gba/video.o (.text._ZL9order_obj*)
-      build/gba/video.o (.text.update_scanline)
+      /* Renderer: keep ALL video.o text in RAM for now.
+       * TODO: once working, split hot/cold paths for ~21KB savings. */
+      build/gba/video.o (.text .text*)
 
       /* All .data from all objects (small, writable) */
       build/gba/*.o (.data .data*)
@@ -728,8 +725,6 @@ SECTIONS
   .xip_gba : {
     . = ALIGN(8);
     __xip_gba_start__ = .;
-      /* Cold renderer: bitmap modes, affine paths, setup */
-      build/gba/video.o (.text .text*)
       /* Cold: link cable, GBP, wireless, pad, frontend */
       build/gba/serial.o (.text .text*)
       build/gba/serial_proto.o (.text .text*)
