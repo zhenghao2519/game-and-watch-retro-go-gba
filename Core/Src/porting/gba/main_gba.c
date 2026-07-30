@@ -236,34 +236,35 @@ static void gba_load_bios(void)
 /* ------------------------------------------------------------------- SRAM --- */
 /* The cart's own save — the one the game writes when you save in-game.
  * On filesystem_wip, saves go through the fs_open/fs_write filesystem layer. */
+static void gba_show_save_indicator(uint16_t color)
+{
+    uint16_t *dest = lcd_get_active_buffer();
+    for (int i = 0; i < LCD_WIDTH * 2; i++)
+        dest[i] = color;
+    lcd_swap();
+}
+
 static void gba_SramSave(const char *sramPath)
 {
-    printf("gba: saving SRAM to [%s] (%d bytes, first4=%02x%02x%02x%02x)\n",
-           sramPath, (int)sizeof(gamepak_backup),
-           gamepak_backup[0], gamepak_backup[1],
-           gamepak_backup[2], gamepak_backup[3]);
     fs_file_t *file = fs_open(sramPath, FS_WRITE, FS_RAW);
     if (file) {
         fs_write(file, gamepak_backup, sizeof(gamepak_backup));
         fs_close(file);
-        printf("gba: SRAM saved OK\n");
+        gba_show_save_indicator(0x07E0); /* green = save OK */
     } else {
-        printf("gba: SRAM save FAILED (fs_open returned NULL)\n");
+        gba_show_save_indicator(0xF800); /* red = save FAILED */
     }
 }
 
 static void gba_SramLoad(const char *sramPath)
 {
-    printf("gba: loading SRAM from [%s]\n", sramPath);
     fs_file_t *file = fs_open(sramPath, FS_READ, FS_RAW);
     if (file) {
-        int n = fs_read(file, gamepak_backup, sizeof(gamepak_backup));
+        fs_read(file, gamepak_backup, sizeof(gamepak_backup));
         fs_close(file);
-        printf("gba: SRAM loaded %d bytes, first4=%02x%02x%02x%02x\n",
-               n, gamepak_backup[0], gamepak_backup[1],
-               gamepak_backup[2], gamepak_backup[3]);
+        gba_show_save_indicator(0x001F); /* blue = load OK */
     } else {
-        printf("gba: SRAM load: no save file found\n");
+        gba_show_save_indicator(0xFFE0); /* yellow = no save file */
     }
 }
 
