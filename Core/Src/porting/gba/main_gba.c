@@ -269,6 +269,9 @@ static void gba_SramLoad(const char *sramPath)
     if (file) {
         fs_read(file, gba_get_backup_ptr(), gba_get_backup_size());
         fs_close(file);
+        /* Re-force Flash type after loading so the game can read the data.
+         * Without this, if backup_type=EEPROM, read_backup() returns 0xFF. */
+        gba_force_flash128_backup();
     }
 }
 
@@ -661,6 +664,13 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     }
 
     reset_gba();
+
+    /* Re-force Flash 128KB after reset_gba() to ensure init_memory()'s
+     * backup_type = backup_type_reset assignment uses FLASH, not whatever
+     * detect_backup_subcircuit set. reset_gba() calls init_memory() which
+     * does backup_type = backup_type_reset — so we need backup_type_reset
+     * to be FLASH before AND after reset. */
+    gba_force_flash128_backup();
 
 #if CHEAT_CODES == 1
     cheat_clear();
