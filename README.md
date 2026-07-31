@@ -1,3 +1,6 @@
+# About this repo
+This is an unofficial adaptation to support GBA on flash-only Game&Watch. Please refer to [game-and-watch-retro-go-sd](https://github.com/sylverb/game-and-watch-retro-go-sd) for more details.
+
 ![](assets/gnw.gif)
 
 # Support
