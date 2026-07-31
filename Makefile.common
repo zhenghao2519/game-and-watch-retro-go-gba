@@ -1012,6 +1012,11 @@ external/smw/smw_assets.dat: roms/smw/smw.sfc | $(BUILD_DIR)
 ######################################
 # GBA compile definitions
 ######################################
+
+# Use official BIOS if present in roms/gba_bios/gba_bios.bin, else open-source fallback
+GBA_OFFICIAL_BIOS := roms/gba_bios/gba_bios.bin
+GBA_BIOS_BIN := $(if $(wildcard $(GBA_OFFICIAL_BIOS)),$(GBA_OFFICIAL_BIOS),external/gpsp/bios/open_gba_bios.bin)
+
 C_DEFS_GBA = \
 -DROM_BUFFER_SIZE=0 \
 -DOBJ_PER_LINE_MAX=32 \
@@ -1047,9 +1052,9 @@ $$(BUILD_DIR)/gba/$(patsubst %.cc,%.o,$(notdir $1)): $1 Makefile.common Makefile
 endef
 
 define gba_asm_obj_prereq_gen
-$$(BUILD_DIR)/gba/$(patsubst %.S,%.o,$(notdir $1)): $1 Makefile.common Makefile | $$(BUILD_DIR)/gba
+$$(BUILD_DIR)/gba/$(patsubst %.S,%.o,$(notdir $1)): $1 Makefile.common Makefile $(GBA_BIOS_BIN) | $$(BUILD_DIR)/gba
 	$$(V)$$(ECHO) [ AS gba ] $$(notdir $$<)
-	$$(V)$$(CC) -c $$(ASFLAGS) $$< -o $$@
+	$$(V)$$(CC) -c $$(ASFLAGS) -DGBA_BIOS_BIN=\"$(GBA_BIOS_BIN)\" $$< -o $$@
 	$$(V)$$(CP) --redefine-syms=gba_redefines $$@
 
 endef
