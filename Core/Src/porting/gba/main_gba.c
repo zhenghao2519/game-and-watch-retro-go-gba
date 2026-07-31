@@ -744,11 +744,11 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
 
-        /* Blit only on drawn frames and when the LCD has finished the previous
-         * swap. Non-blocking: if LCD is still busy, skip this display update
-         * but keep emulating. Avoids stalling on lcd_sleep_while_swap_pending()
-         * inside blit() and saves blit cost (~2.65ms) on frameskip frames. */
-        if (drawFrame && !lcd_is_swap_pending()) {
+        /* Always blit so the screen never goes black during frameskip.
+         * On skipped frames gpSP didn't re-render, so we blit the previous
+         * frame's content — visually a held frame, not a black screen.
+         * Non-blocking: skip the display update if LCD is still busy. */
+        if (!lcd_is_swap_pending()) {
             blit();
             lcd_swap();
         }
