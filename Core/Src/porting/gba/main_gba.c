@@ -235,8 +235,23 @@ static void __attribute__((noreturn)) gba_fatal(const char *line_1, const char *
 /* The open-source BIOS is linked into the overlay via gba_bios.S.
  * On the flash-only build there is no filesystem to check for an
  * official BIOS, so we always use the bundled one. */
+/* Prefer an official BIOS placed on the filesystem at /bios/gba/gba_bios.bin.
+ * Fall back to the bundled open BIOS. A partial read is treated as invalid. */
+#define GBA_BIOS_PATH "bios/gba/gba_bios.bin"
+
 static void gba_load_bios(void)
 {
+    fs_file_t *f = fs_open(GBA_BIOS_PATH, FS_READ, FS_RAW);
+    if (f != NULL) {
+        int n = fs_read(f, bios_rom, sizeof(bios_rom));
+        fs_close(f);
+        if (n == (int)sizeof(bios_rom)) {
+            printf("gba: using official BIOS from %s\n", GBA_BIOS_PATH);
+            return;
+        }
+        printf("gba: ignoring %s (expected %u bytes, got %d)\n",
+               GBA_BIOS_PATH, (unsigned)sizeof(bios_rom), n);
+    }
     memcpy(bios_rom, open_gba_bios_rom, sizeof(bios_rom));
     printf("gba: using bundled open BIOS\n");
 }
