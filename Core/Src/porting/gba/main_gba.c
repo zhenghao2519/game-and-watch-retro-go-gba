@@ -747,34 +747,37 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     while (true) {
         wdog_refresh();
 
-        (void)common_emu_frame_loop(); /* pacing only */
+        bool drawFrame = common_emu_frame_loop();
+        /* GBA runs ~47fps on this hardware, below the 60fps target.
+         * The integrator permanently flags frames as skippable, so
+         * skip_next_frame=drawFrame?0:1 means gpSP never renders.
+         * Force render every frame; frameskip can be revisited once
+         * hot video paths in RAM bring us closer to 60fps. */
+        (void)drawFrame;
+        skip_next_frame = 0;
 
         odroid_input_read_gamepad(&joystick);
         common_emu_input_loop(&joystick, options, &blit);
         common_emu_input_loop_handle_turbo(&joystick);
+
         gba_input_read(&joystick);
 
-        /* Run two GBA frames per display frame (30fps output, 59.7fps emulation).
-         * execute_arm() returns at VBlank, so call it twice.
-         * Frame 1: PPU skips rendering (saves ~2ms), submit audio.
-         * Frame 2: PPU renders into gba_framebuffer, submit audio. */
         common_emu_clear_dwt_cycles();
-
-        skip_next_frame = 1;
         execute_arm(execute_cycles);
-        gba_pcm_submit();
+        gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
+                     common_emu_get_dwt_cycles());
 
-        skip_next_frame = 0;
-        execute_arm(execute_cycles);
-        gba_pcm_submit();
-
-        gba_diag_add(&diag_emu_draw, common_emu_get_dwt_cycles());
-
+        /* Always blit so the screen never goes black during frameskip.
+         * On skipped frames gpSP didn't re-render, so we blit the previous
+         * frame's content — visually a held frame, not a black screen.
+         * Non-blocking: skip the display update if LCD is still busy. */
         if (!lcd_is_swap_pending()) {
             blit();
             lcd_swap();
         }
         gba_diag_publish();
+
+        gba_pcm_submit();
 
         common_emu_sound_sync(false);
     }
