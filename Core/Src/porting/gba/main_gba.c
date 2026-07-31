@@ -747,37 +747,34 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     while (true) {
         wdog_refresh();
 
-        (void)common_emu_frame_loop(); /* pacing only — integrator unused for skip */
-        /* Render every other GBA frame (30fps display, full-speed emulation).
-         * skip_next_frame=1 tells gpSP PPU to skip rendering this frame,
-         * saving ~2ms. blit() below always runs so the screen shows the last
-         * rendered frame on skipped frames rather than going black. */
-        static uint8_t render_toggle = 0;
-        render_toggle ^= 1;
-        skip_next_frame = render_toggle;
+        (void)common_emu_frame_loop(); /* pacing only */
 
         odroid_input_read_gamepad(&joystick);
         common_emu_input_loop(&joystick, options, &blit);
         common_emu_input_loop_handle_turbo(&joystick);
-
         gba_input_read(&joystick);
 
+        /* Run two GBA frames per display frame (30fps output, 59.7fps emulation).
+         * execute_arm() returns at VBlank, so call it twice.
+         * Frame 1: PPU skips rendering (saves ~2ms), submit audio.
+         * Frame 2: PPU renders into gba_framebuffer, submit audio. */
         common_emu_clear_dwt_cycles();
-        execute_arm(execute_cycles);
-        gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
-                     common_emu_get_dwt_cycles());
 
-        /* Always blit so the screen never goes black during frameskip.
-         * On skipped frames gpSP didn't re-render, so we blit the previous
-         * frame's content — visually a held frame, not a black screen.
-         * Non-blocking: skip the display update if LCD is still busy. */
+        skip_next_frame = 1;
+        execute_arm(execute_cycles);
+        gba_pcm_submit();
+
+        skip_next_frame = 0;
+        execute_arm(execute_cycles);
+        gba_pcm_submit();
+
+        gba_diag_add(&diag_emu_draw, common_emu_get_dwt_cycles());
+
         if (!lcd_is_swap_pending()) {
             blit();
             lcd_swap();
         }
         gba_diag_publish();
-
-        gba_pcm_submit();
 
         common_emu_sound_sync(false);
     }
