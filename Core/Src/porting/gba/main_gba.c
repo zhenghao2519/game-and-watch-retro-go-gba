@@ -728,10 +728,13 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         wdog_refresh();
 
         bool drawFrame = common_emu_frame_loop();
-        /* Let gpSP skip rendering when the frame integrator says we're behind.
-         * skip_next_frame=1 tells the PPU to evaluate timing but not draw,
-         * saving ~2ms/frame on skipped frames. */
-        skip_next_frame = drawFrame ? 0 : 1;
+        /* GBA runs ~47fps on this hardware, below the 60fps target.
+         * The integrator permanently flags frames as skippable, so
+         * skip_next_frame=drawFrame?0:1 means gpSP never renders.
+         * Force render every frame; frameskip can be revisited once
+         * hot video paths in RAM bring us closer to 60fps. */
+        (void)drawFrame;
+        skip_next_frame = 0;
 
         odroid_input_read_gamepad(&joystick);
         common_emu_input_loop(&joystick, options, &blit);
