@@ -559,10 +559,25 @@ static void gba_input_read(odroid_gamepad_state_t *joystick)
     gba_set_keys(keys);
 }
 
+/* -------------------------------------------------------------------- OC ----
+ * GBA needs the fastest available clock (level 2, ~353 MHz) to reach
+ * playable frame rates. gw_sleep() restores the user's settings clock on
+ * wake; re-apply the boost and reinit audio after every sleep/wake cycle. */
+extern void SystemClock_Config(uint8_t level);
+extern uint32_t oc_level;
+
+static void gba_sleep_wake_up(void)
+{
+    SystemClock_Config(2);
+    odroid_audio_init(odroid_audio_sample_rate_get());
+    audio_start_playing(GBA_AUDIO_FRAMES);
+}
+
 /* ------------------------------------------------------------------- main --- */
 void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
 {
     odroid_gamepad_state_t joystick;
+    uint8_t saved_oc_level = (uint8_t)(oc_level & 0xF); /* restore on exit */
     /* Read-only (enabled = -1): the frame budget is 16.67ms, and these two say who
      * is spending it. If Emulate dominates, the answer is clock and the interpreter.
      * If Draw does, the answer is the renderer and where its code lives. */
@@ -598,8 +613,13 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
     video_frame.buffer = gba_framebuffer;
     gba_screen_pixels = gba_framebuffer;
 
+    /* Boost to level 2 (~353 MHz) for GBA performance */
+    SystemClock_Config(2);
+    odroid_audio_init(GBA_SAMPLE_RATE);
+
     odroid_system_init(APPID_GBA, GBA_SAMPLE_RATE);
     odroid_system_emu_init(&gba_LoadState, &gba_SaveState, NULL);
+    odroid_system_set_sleep_hook(&gba_sleep_wake_up);
 
     /* Native 240x160 is a small island on a 320x240 panel; FIT is the sane
      * first-run default. Any choice the user makes afterwards is theirs. */

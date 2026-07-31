@@ -96,7 +96,7 @@ static bool wdog_enabled;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
+void SystemClock_Config(uint8_t level);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
@@ -427,7 +427,7 @@ int main(void)
   /* USER CODE END Init */
 
   /* Configure the system clock */
-  SystemClock_Config();
+  SystemClock_Config(oc_level & 0xF);
 
   /* USER CODE BEGIN SysInit */
 
@@ -537,12 +537,19 @@ int main(void)
   * @brief System Clock Configuration
   * @retval None
   */
-void SystemClock_Config(void)
+void SystemClock_Config(uint8_t level)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
   RCC_CRSInitTypeDef RCC_CRSInitStruct = {0};
+
+  /* Persist the requested level so OSPI clock selection can read it below */
+  oc_level = (oc_level & 0xFFFF0000u) | level;
+
+  /* Switch back to HSI before reconfiguring PLL — required for runtime changes */
+  RCC->CFGR &= ~RCC_CFGR_SW;
+  RCC->CFGR |= RCC_CFGR_SW_HSI;
 
   /** Supply configuration update enable
   */
@@ -578,31 +585,29 @@ void SystemClock_Config(void)
     CoreClock= HSI/PLLM x PLLN/PLLP
     OSPIClock= HSI/PLLM x PLLN/PLLQ
   */
-  switch (oc_level & 0xF) {
-    case 1: // Intermediate overclocking
+  switch (level) {
+    case 1: // Intermediate overclocking ~312 MHz
       RCC_OscInitStruct.PLL.PLLM = 16;
       RCC_OscInitStruct.PLL.PLLN = 156;
       RCC_OscInitStruct.PLL.PLLP = 2;
       RCC_OscInitStruct.PLL.PLLQ = 6;
       RCC_OscInitStruct.PLL.PLLR = 2;
-      oc_level = 0x10001; 
       break;
-    case 2: // Maximum overclocking
+    case 2: // Maximum overclocking ~353 MHz (GBA)
       RCC_OscInitStruct.PLL.PLLM = 38;
       RCC_OscInitStruct.PLL.PLLN = 420;
       RCC_OscInitStruct.PLL.PLLP = 2;
       RCC_OscInitStruct.PLL.PLLQ = 7;
       RCC_OscInitStruct.PLL.PLLR = 2;
-      oc_level = 0x20002; 
       break;
-    default: // No overclocking
+    default: // No overclocking ~280 MHz
+      level = 0;
       RCC_OscInitStruct.PLL.PLLM = 16;
       RCC_OscInitStruct.PLL.PLLN = 140;
       RCC_OscInitStruct.PLL.PLLP = 2;
       RCC_OscInitStruct.PLL.PLLQ = 2;
       RCC_OscInitStruct.PLL.PLLR = 2;
-      oc_level = 0; 
-      break; 
+      break;
   }
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
@@ -648,7 +653,7 @@ void SystemClock_Config(void)
   PeriphClkInitStruct.PLL3.PLL3RGE = RCC_PLL3VCIRANGE_3;
   PeriphClkInitStruct.PLL3.PLL3VCOSEL = RCC_PLL3VCOWIDE;
   PeriphClkInitStruct.PLL3.PLL3FRACN = 0;
-  if (oc_level == 0)  //// No overclocking
+  if (level == 0)
     PeriphClkInitStruct.OspiClockSelection = RCC_OSPICLKSOURCE_CLKP;
   else
     PeriphClkInitStruct.OspiClockSelection = RCC_OSPICLKSOURCE_PLL;
@@ -676,6 +681,15 @@ void SystemClock_Config(void)
   RCC_CRSInitStruct.HSI48CalibrationValue = 32;
 
   HAL_RCCEx_CRSConfig(&RCC_CRSInitStruct);
+
+  /* OSPI timing is derived from the PLL1Q clock. When called at runtime
+   * (not during startup), reinitialise so prescaler/sample-point match.
+   * hospi1.State is HAL_OSPI_STATE_RESET at startup — skip then. */
+  if (hospi1.State != HAL_OSPI_STATE_RESET) {
+    OSPI_DisableMemoryMappedMode();
+    OSPI_Init(&hospi1);
+    OSPI_EnableMemoryMappedMode();
+  }
 }
 
 /**
