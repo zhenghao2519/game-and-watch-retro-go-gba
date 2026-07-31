@@ -299,23 +299,15 @@ class ROM:
             self.symbol = "0"
         obj_name = "".join([i if i.isalnum() else "_" for i in self.path.name])
         self.obj_path = "build/roms/" + obj_name + ".o"
-        symbol_path = str(self.path.parent) + "/" + obj_name
         if (self.embed):
-            self.symbol = (
-                "_binary_"
-                + "".join([i if i.isalnum() else "_" for i in symbol_path])
-                + "_start"
-            )
+            clean_path = "".join([chr(b) if chr(b).isalnum() and b < 128 else "_" for b in str(self.path).encode('utf-8')])
+            self.symbol = "_binary_" + clean_path + "_start"
 
         self.img_path = self.path.parent / (self.filename + ".img")
         obj_name = "".join([i if i.isalnum() else "_" for i in self.img_path.name])
-        symbol_path = str(self.path.parent) + "/" + obj_name
         self.obj_img = "build/roms/" + obj_name + "_" + extension + ".o"
-        self.img_symbol = (
-            "_binary_"
-            + "".join([i if i.isalnum() else "_" for i in symbol_path])
-            + "_start"
-        )
+        clean_img_path = "".join([chr(b) if chr(b).isalnum() and b < 128 else "_" for b in str(self.img_path).encode('utf-8')])
+        self.img_symbol = "_binary_" + clean_img_path + "_start"
 
     def __str__(self) -> str:
         return f"id: {self.rom_id} name: {self.name} size: {self.size} ext: {self.ext}"
@@ -851,6 +843,9 @@ class ROMParser:
         data = rom.read()
 
         if "nes_system" in variable_name:  # NES
+            if rom.romdef.get("compress", "1") == "0":
+                print(f"INFO: {rom.name} is set to not be compressed in the json, skipping compression!")
+                return
             if rom.path.stat().st_size > MAX_COMPRESSED_NES_SIZE:
                 print(
                     f"INFO: {rom.name} is too large to compress, skipping compression!"
@@ -937,6 +932,9 @@ class ROMParser:
 
             output_file.write_bytes(output_data)
         elif "gb_system" in variable_name:  # GB/GBC
+            if rom.romdef.get("compress", "1") == "0":
+                print(f"INFO: {rom.name} is set to not be compressed in the json, skipping compression!")
+                return
             BANK_SIZE = 16384
             banks = [data[i : i + BANK_SIZE] for i in range(0, len(data), BANK_SIZE)]
             compressed_banks = [compress(bank) for bank in banks]
