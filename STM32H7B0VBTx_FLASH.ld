@@ -682,13 +682,23 @@ SECTIONS
     . = ALIGN(4);
     _GBA_MAIN_CODE_END = .;
 
-      /* video.o: all text goes to XIP (ext flash) for now to save RAM.
-       * TODO: once working, profile and bring hot scanline paths back. */
+      /* video.o hot renderer paths — run 160 times per frame for every
+       * tile layer. --redefine-syms renames symbols but not sections, so
+       * section names here are the original C++ mangled names. The wildcard
+       * on render_scanline_text* catches all _fast/_mosaic variants.
+       * NOT render_scanline_objs: 21KB across variants, each ~4KB fits in
+       * the 16KB I-Cache after first fetch. Cold paths stay in .xip_gba. */
+      build/gba/video.o (.text._Z20render_scanline_text*)
+      build/gba/video.o (.text._Z13render_object*)
+      build/gba/video.o (.text._ZL16render_w_effects*)
+      build/gba/video.o (.text._ZL9order_obj*)
+      build/gba/video.o (.text.update_scanline)
 
       /* All .data from all objects (small, writable) */
       build/gba/*.o (.data .data*)
 
-      /* .text for objects cpu.o calls — exclude cold files and video.o */
+      /* .text for objects cpu.o calls — exclude cold files and video.o
+       * (video.o hot paths already claimed above; cold paths go to .xip_gba) */
       EXCLUDE_FILE(*/cpu.o */video.o */serial.o */serial_proto.o */gbp.o */rfu.o
                    */input.o */gba_frontend.o */m4a_hle.o) build/gba/*.o (.text .text*)
 
@@ -724,7 +734,9 @@ SECTIONS
   .xip_gba : {
     . = ALIGN(8);
     __xip_gba_start__ = .;
-      /* Renderer — runs from ext flash XIP for now */
+      /* video.o cold paths: bitmap modes, affine, setup, render_scanline_objs.
+       * The hot scanline renderers were already claimed by .overlay_gba above;
+       * "first claim wins" leaves only the cold sections here. */
       build/gba/video.o (.text .text*)
       /* Cold: link cable, GBP, wireless, pad, frontend */
       build/gba/serial.o (.text .text*)

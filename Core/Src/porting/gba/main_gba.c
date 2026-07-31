@@ -728,9 +728,10 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         wdog_refresh();
 
         bool drawFrame = common_emu_frame_loop();
-        /* Always render — gpSP must produce every frame for correct timing.
-         * Display update is gated by whether the LCD is ready (non-blocking). */
-        skip_next_frame = 0;
+        /* Let gpSP skip rendering when the frame integrator says we're behind.
+         * skip_next_frame=1 tells the PPU to evaluate timing but not draw,
+         * saving ~2ms/frame on skipped frames. */
+        skip_next_frame = drawFrame ? 0 : 1;
 
         odroid_input_read_gamepad(&joystick);
         common_emu_input_loop(&joystick, options, &blit);
@@ -743,11 +744,11 @@ void app_main_gba(uint8_t load_state, uint8_t start_paused, uint8_t save_slot)
         gba_diag_add(drawFrame ? &diag_emu_draw : &diag_emu_skip,
                      common_emu_get_dwt_cycles());
 
-        /* Blit only when LCD has finished the previous swap — if still
-         * pending, skip this display update (frame drop) but keep emulating.
-         * This avoids blocking on lcd_sleep_while_swap_pending() inside blit()
-         * and gives the CPU back to the emulator sooner. */
-        if (!lcd_is_swap_pending()) {
+        /* Blit only on drawn frames and when the LCD has finished the previous
+         * swap. Non-blocking: if LCD is still busy, skip this display update
+         * but keep emulating. Avoids stalling on lcd_sleep_while_swap_pending()
+         * inside blit() and saves blit cost (~2.65ms) on frameskip frames. */
+        if (drawFrame && !lcd_is_swap_pending()) {
             blit();
             lcd_swap();
         }
