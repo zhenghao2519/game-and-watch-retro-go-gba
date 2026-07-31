@@ -584,7 +584,7 @@ extern uint32_t oc_level;
 static void gba_sleep_wake_up(void)
 {
     SystemClock_Config(2);
-    odroid_audio_init(odroid_audio_sample_rate_get());
+    odroid_audio_init(GBA_SAMPLE_RATE);
     audio_start_playing(GBA_AUDIO_FRAMES);
 }
 
